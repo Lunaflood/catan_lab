@@ -30,6 +30,13 @@ fn make_bot(name: &str, seed: u64) -> Option<Box<dyn Bot>> {
         "bestcheat" => Box::new(SearchBot::peeking(seed, EvalWeights::tuned(), PlacementWeights::tuned())),
         "bestnarrow" => Box::new(SearchBot::narrow_shapes(seed, EvalWeights::tuned(), PlacementWeights::tuned())),
         "bestw3" => Box::new(SearchBot::tuned_worlds(seed, 3, EvalWeights::tuned(), PlacementWeights::tuned())),
+        // 難易度の段階（Web の対戦相手と同じ物）
+        "lv0" | "easy" => catan_ai::bots::bot_for_level(0, seed),
+        "lv1" | "normal" => catan_ai::bots::bot_for_level(1, seed),
+        "lv2" | "hard" => catan_ai::bots::bot_for_level(2, seed),
+        "lv3" | "max" => catan_ai::bots::bot_for_level(3, seed),
+        // 段階の間隔を測るための候補: 調整済みの重み + 1 手読み
+        "lv2b" => Box::new(GreedyEvalBot::with_weights(seed, EvalWeights::tuned(), "つよい(1手読み)")),
         "search1" => Box::new(SearchBot::new(seed, 1)),
         "search" | "s" | "search2" => Box::new(SearchBot::new(seed, 2)),
         "search2n" => Box::new(SearchBot::with_budget(seed, 2, 20_000)),

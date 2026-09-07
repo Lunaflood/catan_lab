@@ -7,6 +7,30 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<!-- ホーム（待機所）。ここで人数・相手・名前を決めてから盤に入る。
+     オンライン対戦を足すときは、この一覧に「他の人」が並ぶ -->
+<div id="home">
+  <div class="hcard">
+    <h1>カタン</h1>
+
+    <label class="hrow">
+      <span class="hlabel">あなたの名前</span>
+      <input id="myname" type="text" maxlength="12" placeholder="なまえ">
+    </label>
+
+    <div class="hrow">
+      <span class="hlabel">人数</span>
+      <div id="hplayers" class="hseg"></div>
+    </div>
+
+    <div class="hlabel hsub">対戦相手</div>
+    <div id="hseats"></div>
+
+    <button id="hstart" class="hstart">はじめる</button>
+    <div class="hnote" id="hnote"></div>
+  </div>
+</div>
+
 <div id="app">
   <!-- 盤に集中できるよう、上の帯ごと畳めるようにする。この矢印だけは常に出る -->
   <button id="uitoggle" title="上の欄を出す／隠す">▾</button>

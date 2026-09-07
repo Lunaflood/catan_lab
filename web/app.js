@@ -1751,7 +1751,7 @@ function renderResult() {
       const q = r.parts;
       return `<tr class="${r.p.id === state.winner ? "win" : ""}" style="--c:${PLAYER_COLORS[r.p.id]}">
         <td class="rank">${i + 1}</td>
-        <td class="who"><span class="sw"></span>P${r.p.id}${r.p.human ? "（あなた）" : ""}</td>
+        <td class="who"><span class="sw"></span>${escapeHtml(nameOf(r.p.id))}</td>
         ${cell(q.settlements || 0)}
         ${cell((q.cities || 0) * 2)}
         ${cell(q.longestRoad ? 2 : 0)}
@@ -1766,7 +1766,7 @@ function renderResult() {
     <div class="rcard">
       <div class="rhead" style="--c:${PLAYER_COLORS[state.winner]}">
         <span class="sw"></span>
-        <b>P${state.winner}${state.players[state.winner] && state.players[state.winner].human ? "（あなた）" : ""} の勝ち</b>
+        <b>${escapeHtml(nameOf(state.winner))} の勝ち</b>
         <span class="rturn">${state.turn} 手番</span>
       </div>
       <table class="rtable">
@@ -1781,12 +1781,58 @@ function renderResult() {
         </tr></thead>
         <tbody>${body}</tbody>
       </table>
-      <button id="resultnew" class="rnew">もう一度</button>
+      <div class="rbtns">
+        <button id="resultagain" class="ragain">もう一度遊ぶ</button>
+        <button id="resulthome" class="rhome">ホームに戻る</button>
+      </div>
+      <div class="hnote" id="rnote"></div>
     </div>`;
-  document.getElementById("resultnew").addEventListener("click", () => {
+  document.getElementById("resultagain").addEventListener("click", againVote);
+  document.getElementById("resulthome").addEventListener("click", goHome);
+  renderAgainNote();
+}
+
+/* --- 決着後の 2 つのボタン ---
+ *
+ * 「もう一度遊ぶ」は **全員が押したら**進む。
+ * 「ホームに戻る」は **誰か 1 人が押したら**全員が戻る。
+ * 片方は全会一致、もう片方は 1 人の意思で通る、という非対称は意図したもの
+ * （設定を変えたい人が 1 人でもいるなら、待たせる意味が無い）。
+ *
+ * いまは対戦相手が CPU だけなので「全員」＝あなた 1 人。
+ * オンライン対戦を足すときは、この 2 つの入口に他の人の票が入るだけで済む。
+ */
+let againVotes = new Set();
+
+function humanSeats() {
+  return state.players.filter((p) => p.human).map((p) => p.id);
+}
+
+function renderAgainNote() {
+  const el = document.getElementById("rnote");
+  if (!el) return;
+  const need = humanSeats().length;
+  el.textContent =
+    need <= 1
+      ? "「ホームに戻る」で人数や強さを変えられます"
+      : `もう一度: ${againVotes.size} / ${need} 人`;
+}
+
+function againVote() {
+  if (mySeat >= 0) againVotes.add(mySeat);
+  const need = humanSeats();
+  if (need.every((p) => againVotes.has(p)) || need.length === 0) {
+    againVotes.clear();
     watching = false;
-    newGame(true);
-  });
+    newGame(true); // 設定はそのまま、盤と出目だけ引き直す
+    return;
+  }
+  renderAgainNote();
+}
+
+function goHome() {
+  againVotes.clear();
+  showHome();
 }
 
 /**
@@ -1974,8 +2020,8 @@ function renderPlayers() {
       <span class="swatch" style="background:${PLAYER_INK[p.id]}"></span>
       <div class="pscore">
         <div class="vp" title="${vpTip}">${vpNum}<i>pt</i></div>
-        <div class="name">P${p.id}</div>
-        ${p.human ? `<div class="me">あなた</div>` : ""}
+        <div class="name">${escapeHtml(nameOf(p.id))}</div>
+        <div class="me">${p.human ? "あなた" : "CPU"}</div>
       </div>
       <div class="pinfo">
         ${tags.length ? `<div class="ptags">${tags.join("")}</div>` : ""}
@@ -2214,7 +2260,7 @@ function renderTradeComposer(box, mode) {
 
   const head = counter
     ? `<div class="offerbox" style="--c:${PLAYER_COLORS[t ? t.proposer : 0]}">
-         <b>P${t ? t.proposer : "?"} からの提案</b>
+         <b>${t ? escapeHtml(nameOf(t.proposer)) : "?"} からの提案</b>
          ${t ? dealHtml(t.give, t.want, "渡す", "欲しい") : ""}
        </div>`
     : `<div class="banner"><b>交易を提案</b>　欲しい物と出す物を選んでください</div>`;
@@ -2404,7 +2450,7 @@ function renderVictimPick(box) {
     b.disabled = !a;
     b.style.setProperty("--c", PLAYER_COLORS[p.id]);
     b.innerHTML = `
-      <div class="vhead"><span class="sw"></span>P${p.id}
+      <div class="vhead"><span class="sw"></span>${escapeHtml(nameOf(p.id))}
         <span class="vvp">${p.vp !== null ? p.vp : p.publicVp}<i>点</i></span></div>
       <div class="vstats">
         <span title="手札">${iconHtml("hand", 15)}<b>${p.handSize}</b></span>
@@ -2707,7 +2753,7 @@ function renderTradePick(box) {
   for (const a of picks) {
     const b = document.createElement("button");
     b.className = "tile pick";
-    b.innerHTML = `<span class="pname" style="--c:${PLAYER_COLORS[a.who]}">P${a.who} と成立</span>
+    b.innerHTML = `<span class="pname" style="--c:${PLAYER_COLORS[a.who]}">${escapeHtml(nameOf(a.who))} と成立</span>
       ${dealHtml(a.give, a.want, "渡す", "貰う")}`;
     b.addEventListener("click", () => play(a.i));
     box.appendChild(b);
@@ -2746,7 +2792,7 @@ function renderActions() {
   box.innerHTML = "";
 
   if (state.winner !== null) {
-    box.innerHTML = `<div class="banner win">P${state.winner} の勝ち</div>`;
+    box.innerHTML = `<div class="banner win">${escapeHtml(nameOf(state.winner))} の勝ち</div>`;
     return;
   }
   if (!isHumanTurn()) {
@@ -2976,7 +3022,7 @@ function flowHtml(e) {
 function logLine(e) {
   return `<div class="line">
     <span class="who" style="background:${PLAYER_INK[e.actor]}"></span>
-    <span class="txt">P${e.actor} ${escapeHtml(e.text)}${flowHtml(e)}</span></div>`;
+    <span class="txt">${escapeHtml(nameOf(e.actor))} ${escapeHtml(e.text)}${flowHtml(e)}</span></div>`;
 }
 
 function renderLog() {
@@ -3051,7 +3097,7 @@ function renderDrawer() {
             .join("")
         : `<div class="dempty">—</div>`;
       return `<div class="dcol" style="--c:${PLAYER_INK[p.id]}">
-        <div class="dcolhead"><span class="sw"></span>P${p.id}${p.human ? "（あなた）" : ""}
+        <div class="dcolhead"><span class="sw"></span>${escapeHtml(nameOf(p.id))}
           <span class="dbn">${lines.length}</span></div>
         <div class="dcolbody">${body}</div>
       </div>`;
@@ -3251,6 +3297,118 @@ function scheduleBot() {
   }, wait);
 }
 
+/* ---------------------------------------------------------------- ホーム（待機所） */
+
+/**
+ * 待機所の設定。
+ *
+ * **参加者の一覧**として持つ（席の一覧ではない）。席は対局を始める時に配る。
+ * オンライン対戦を足すときは、ここに種類 "remote" の参加者が並ぶだけで済む。
+ */
+let lobby = {
+  name: "あなた",
+  members: [
+    { kind: "human" },
+    { kind: "cpu", level: 1 },
+    { kind: "cpu", level: 1 },
+    { kind: "cpu", level: 1 },
+  ],
+};
+
+const LEVEL_NAMES = ["やさしい", "ふつう", "つよい", "さいきょう"];
+
+/** 席 → 表示名。対局が始まると席の並びが決まるので、そこで作る */
+let seatNames = [];
+
+function nameOf(pid) {
+  return seatNames[pid] || `P${pid}`;
+}
+
+function loadLobby() {
+  try {
+    const raw = localStorage.getItem("catan.lobby");
+    if (raw) {
+      const v = JSON.parse(raw);
+      if (v && Array.isArray(v.members) && v.members.length >= 3) lobby = v;
+    }
+  } catch {
+    // 読めなくても既定のままで遊べる
+  }
+}
+
+function saveLobby() {
+  try {
+    localStorage.setItem("catan.lobby", JSON.stringify(lobby));
+  } catch {
+    // 覚えられなくても、この対局の間は効く
+  }
+}
+
+function renderHome() {
+  document.getElementById("myname").value = lobby.name;
+
+  const seg = document.getElementById("hplayers");
+  seg.innerHTML = "";
+  for (const n of [3, 4]) {
+    const b = document.createElement("button");
+    b.textContent = `${n} 人`;
+    b.className = lobby.members.length === n ? "on" : "";
+    b.addEventListener("click", () => {
+      while (lobby.members.length > n) lobby.members.pop();
+      while (lobby.members.length < n) lobby.members.push({ kind: "cpu", level: 1 });
+      saveLobby();
+      renderHome();
+    });
+    seg.appendChild(b);
+  }
+
+  const box = document.getElementById("hseats");
+  box.innerHTML = "";
+  lobby.members.forEach((m, i) => {
+    const d = document.createElement("div");
+    d.className = "hseat";
+    d.style.setProperty("--c", PLAYER_INK[i]);
+    if (m.kind === "human") {
+      d.innerHTML = `<span class="sw"></span>
+        <span class="who">${escapeHtml(lobby.name || "あなた")}<span class="me">あなた</span></span>`;
+    } else {
+      const opts = LEVEL_NAMES.map(
+        (nm, lv) => `<option value="${lv}"${lv === m.level ? " selected" : ""}>${nm}</option>`
+      ).join("");
+      d.innerHTML = `<span class="sw"></span>
+        <span class="who">CPU ${i}</span>
+        <select data-i="${i}">${opts}</select>`;
+    }
+    box.appendChild(d);
+  });
+  box.querySelectorAll("select").forEach((sel) => {
+    sel.addEventListener("change", (ev) => {
+      lobby.members[+ev.currentTarget.dataset.i].level = +ev.currentTarget.value;
+      saveLobby();
+    });
+  });
+
+  const lv = lobby.members.filter((m) => m.kind === "cpu").map((m) => LEVEL_NAMES[m.level]);
+  document.getElementById("hnote").textContent =
+    `${lobby.members.length} 人（あなた + CPU ${lv.length} 体: ${lv.join("・")}）`;
+}
+
+function showHome() {
+  clearTimeout(botTimer);
+  watching = false;
+  document.getElementById("home").hidden = false;
+  document.getElementById("app").hidden = true;
+  renderHome();
+}
+
+function startFromHome() {
+  lobby.name = document.getElementById("myname").value.trim() || "あなた";
+  saveLobby();
+  document.getElementById("home").hidden = true;
+  document.getElementById("app").hidden = false;
+  newGame(true);
+}
+
 function newGame(newSeed) {
   clearTimeout(botTimer);
   clearTimeout(rollHide);
@@ -3271,12 +3429,35 @@ function newGame(newSeed) {
   const [boardSeed, diceSeed, devSeed, stealSeed] = ids.map((id) =>
     parseInt(document.getElementById(id).value || "1", 10)
   );
-  const players = parseInt(document.getElementById("players").value, 10);
+  const players = lobby.members.length;
   // 席もランダムに。毎回 1 番手だと初手の有利不利が固定されてしまう。
   // 種から決めるので、同じ種なら席も含めて同じ試合を再現できる。
   mySeat = watching ? -1 : diceSeed % players;
+
+  // 参加者を席に配る。人間は上で決めた席、CPU は残りへ順に。
+  // 名前と強さはここで席の並びに写す（以降の描画は席番号だけを見る）
+  seatNames = new Array(players);
+  let levels = 0;
+  const cpus = lobby.members.filter((m) => m.kind === "cpu");
+  let ci = 0;
+  for (let seat = 0; seat < players; seat++) {
+    if (seat === mySeat) {
+      seatNames[seat] = lobby.name || "あなた";
+      continue;
+    }
+    const m = cpus[ci++] || { level: 1 };
+    seatNames[seat] = LEVEL_NAMES[m.level];
+    levels |= (m.level & 0b11) << (seat * 2);
+  }
+  if (watching) {
+    for (let seat = 0; seat < players; seat++) seatNames[seat] = `CPU ${seat}`;
+  }
+
   clearDraft();
-  wasm.game_new(boardSeed, diceSeed, devSeed, stealSeed, players, watching ? 0 : 1 << mySeat);
+  wasm.game_new(
+    boardSeed, diceSeed, devSeed, stealSeed, players,
+    watching ? 0 : 1 << mySeat, levels
+  );
   board = readJson(wasm.board_json());
   refreshState();
   drawBoard();
@@ -3410,7 +3591,19 @@ function randomSeed(k) {
 for (const [k, id] of ["seed", "seed2", "seed3", "seed4"].entries()) {
   document.getElementById(id).value = randomSeed(k);
 }
-loadWasm().then(() => newGame(false)).catch((e) => {
-  document.getElementById("prompttext").textContent = "読み込みに失敗しました: " + e;
-  console.error(e);
+loadLobby();
+document.getElementById("hstart").addEventListener("click", startFromHome);
+document.getElementById("myname").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") startFromHome();
 });
+
+// 盤に入るのは「はじめる」を押してから。まず待機所を出す
+loadWasm()
+  .then(() => {
+    document.getElementById("app").hidden = true;
+    showHome();
+  })
+  .catch((e) => {
+    document.getElementById("hnote").textContent = "読み込みに失敗しました: " + e;
+    console.error(e);
+  });

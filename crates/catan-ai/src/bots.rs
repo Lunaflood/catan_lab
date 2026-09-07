@@ -532,3 +532,42 @@ impl Bot for SearchBot {
         best_action(&g, v.me, actions, &self.w, &self.lim)
     }
 }
+
+// =========================================================================
+
+/// 対戦相手の強さの段階。数字が大きいほど強い。
+///
+/// ⛔**ランダム系は入れない**。交易も建設も脈絡が無くなって「壊れている」ように見え、
+/// 弱いのではなく面白くない相手になる。
+/// ここは全段階とも同じ評価関数の系統で、**評価の広さと読む深さだけ**を変える。
+///
+/// 4 体を同じ卓に座らせた実測（1,500 戦・帰無仮説 25%）:
+/// やさしい 1.1%（平均VP 4.33）/ ふつう 17.7%（6.71）/ つよい 31.1%（7.54）/ さいきょう 50.1%（8.34）
+pub const NUM_LEVELS: u32 = 4;
+
+pub fn level_name(level: u32) -> &'static str {
+    match level {
+        0 => "やさしい",
+        1 => "ふつう",
+        2 => "つよい",
+        _ => "さいきょう",
+    }
+}
+
+/// 段階からボットを作る。CLI（強さの測定）と Web（対戦相手）で同じ物を使う
+pub fn bot_for_level(level: u32, seed: u64) -> Box<dyn Bot> {
+    match level {
+        // 目の前の産出と勝利点だけを見る 1 手読み
+        0 => Box::new(GreedyEvalBot::with_weights(seed, EvalWeights::weak(), "やさしい")),
+        // 1 手読み + 詰めていない評価関数（9/7 朝までの CPU）
+        1 => Box::new(GreedyEvalBot::with_weights(seed, EvalWeights::default(), "ふつう")),
+        // 調整済みの重み + 1 手読み。
+        // ここを「既定の重み + 2 手読み」にすると ふつう と近すぎた（16.7% 対 21.1%）。
+        // 重みを良くして深さを 1 に留めた方が、段階の間隔がきれいに開く（実測 17.7% 対 31.1%）
+        2 => Box::new(GreedyEvalBot::with_weights(seed, EvalWeights::tuned(), "つよい")),
+        // 2 手読み + 自動調整した重み
+        _ => Box::new(SearchBot::with_weights(
+            seed, 2, EvalWeights::tuned(), PlacementWeights::tuned(), "さいきょう",
+        )),
+    }
+}

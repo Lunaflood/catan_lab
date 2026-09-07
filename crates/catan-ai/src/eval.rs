@@ -85,6 +85,28 @@ impl EvalWeights {
 }
 
 impl EvalWeights {
+    /// 弱い相手用。**でたらめに指すのではなく、下手に指す**。
+    ///
+    /// ランダム系のボットは、交易も建設も脈絡が無くなって
+    /// 「弱い」ではなく「壊れている」ように見える。対戦相手としては面白くない。
+    /// ここは同じ評価関数のまま、**先を見る項目だけを落とす**:
+    /// 手札の噛み合い（`hand_synergy`）と、払える段差（`afford_*`）と、
+    /// 道の先の拡張余地（`expansion_next`）。
+    /// 目の前の産出と勝利点だけを見て動くので、人間の初心者の打ち方に近くなる。
+    pub fn weak() -> Self {
+        EvalWeights {
+            hand_synergy: 0.0,
+            afford_city: 0.0,
+            afford_settlement: 0.0,
+            afford_dev: 0.0,
+            expansion_next: 0.0,
+            enemy_production: 0.0,
+            enemy_hand: 0.0,
+            leader_bias: 0.0,
+            ..EvalWeights::default()
+        }
+    }
+
     /// 自動調整で出した重み（2026-09-07）。
     ///
     /// 手で決めた既定値に対し、**据え置きの相手 3 体に当てた勝率が 24.5% → 55.7%**。

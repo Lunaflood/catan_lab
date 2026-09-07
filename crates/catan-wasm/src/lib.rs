@@ -10,9 +10,7 @@
 pub mod geometry;
 mod json;
 
-use catan_ai::bots::{Bot, SearchBot};
-use catan_ai::eval::EvalWeights;
-use catan_ai::placement::PlacementWeights;
+use catan_ai::bots::{bot_for_level, Bot};
 use catan_core::action::{Action, Bundle, DevCard, Outcome, Prompt, EMPTY};
 use catan_core::board::{BuildingKind, PlayerId, PortKind, Resource, RESOURCES};
 use catan_core::game::{Game, GameConfig, TurnClock, MAX_PLAYERS};
@@ -100,6 +98,8 @@ pub extern "C" fn game_new(
     steal_seed: u32,
     players: u32,
     humans_mask: u32,
+    // levels: 席ごとの強さ。1 席 2 ビット（0=やさしい / 1=ふつう / 2=つよい / 3=さいきょう）
+    levels: u32,
 ) {
     let cfg = GameConfig {
         // ブラウザでは実時間。UI が tick で流し込む
@@ -120,19 +120,13 @@ pub extern "C" fn game_new(
         steal_seed as u64,
         cfg,
     );
-    // 手番内を 2 手読む + 自動調整した重み。
-    // 掃引に使っていない seed で、1 手読み（旧 CPU）×3 に対し 50.8%、
-    // 同じ深さ 2 の既定重み×3 に対しても 51.4%（帰無仮説 25%・各 2,400 戦）。
-    // 深さ 3・4 は 2 と互角で遅いだけなので、2 で止める。
+    // 席ごとに強さを変えられる。`levels` は 1 席 2 ビット（0=やさしい 〜 3=さいきょう）。
+    // 4 体を同じ卓に座らせた実測（1,500 戦・帰無仮説 25%）:
+    //   やさしい 1.1% / ふつう 17.7% / つよい 31.1% / さいきょう 50.1%
     let bots: Vec<Box<dyn Bot>> = (0..n)
         .map(|i| {
-            Box::new(SearchBot::with_weights(
-                dice_seed as u64 * 31 + i as u64,
-                2,
-                EvalWeights::tuned(),
-                PlacementWeights::tuned(),
-                "CPU",
-            )) as Box<dyn Bot>
+            let lv = (levels >> (i * 2)) & 0b11;
+            bot_for_level(lv, dice_seed as u64 * 31 + i as u64)
         })
         .collect();
     let humans = (0..n).map(|i| humans_mask & (1 << i) != 0).collect();
