@@ -1,0 +1,6 @@
+# Rust のビルド成果物（247MB）。web/catan_wasm.wasm だけは配信物なので追跡する
+/target/
+
+# 測定の一時ファイル
+out_probe.txt
+*_log.txt

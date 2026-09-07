@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/catan-core",
+    "crates/catan-ai",
+    "crates/catan-cli",
+    "crates/catan-wasm",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+# 自動対戦ハーネス用: リリース相当の速度でデバッグ表明も残す
+[profile.bench-debug]
+inherits = "release"
+debug = true
+debug-assertions = true
+panic = "unwind"

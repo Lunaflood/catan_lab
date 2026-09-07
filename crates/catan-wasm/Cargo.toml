@@ -1,0 +1,13 @@
+[package]
+name = "catan-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "ブラウザ向けの薄い橋渡し。wasm-bindgen も npm も使わない。"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+catan-core = { path = "../catan-core" }
+catan-ai = { path = "../catan-ai" }

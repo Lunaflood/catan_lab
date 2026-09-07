@@ -1,0 +1,14 @@
+[package]
+name = "catan-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "自動対戦・速度測定のコマンドライン。"
+
+[[bin]]
+name = "catan"
+path = "src/main.rs"
+
+[dependencies]
+catan-core = { path = "../catan-core" }
+catan-ai = { path = "../catan-ai" }

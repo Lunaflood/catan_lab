@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>カタン</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <!-- 盤に集中できるよう、上の帯ごと畳めるようにする。この矢印だけは常に出る -->
+  <button id="uitoggle" title="上の欄を出す／隠す">▾</button>
+  <!-- 音は消せないと困る。畳んだ帯の中に入れず、常に押せる場所に置く -->
+  <button id="sfxtoggle" title="効果音を鳴らす／消す">♪</button>
+  <header hidden>
+    <h1>カタン</h1>
+    <div class="controls">
+      <div id="setupbox">
+        <div class="seeds" title="出来事ごとに別々の種。互いに影響しない">
+          <label>盤 <input id="seed" type="number" value="1" min="0"></label>
+          <label>サイコロ <input id="seed2" type="number" value="1" min="0"></label>
+          <label>発展 <input id="seed3" type="number" value="1" min="0"></label>
+          <label>盗み <input id="seed4" type="number" value="1" min="0"></label>
+        </div>
+      </div>
+      <label>人数
+        <select id="players"><option value="4" selected>4</option><option value="3">3</option></select>
+      </label>
+      <button id="newgame">新しい対局</button>
+      <button id="watch" title="全員CPUで最後まで流す">CPU同士を観戦</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="boardwrap">
+      <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+
+      <!-- サイコロは盤の中央で大きく転がす -->
+      <div id="rollfx" hidden>
+        <div class="bigdie" id="bd0"></div>
+        <div class="bigdie" id="bd1"></div>
+        <div id="rollsum"></div>
+      </div>
+
+      <!-- 決着したら盤の上に結果を出す -->
+      <div id="result" hidden></div>
+
+      <!-- 手札と操作は盤の右下、プレイヤー欄のとなり。
+           プレイヤー欄の「下」に積むと押し出されて見えなくなる -->
+      <div id="turnbox">
+        <div id="prompt">
+          <span id="prompttext"></span>
+          <span id="dicebox" class="dice"></span>
+        </div>
+        <!-- 手札は一番下に固定。中身が変わっても位置が動かないので、目の置き所になる -->
+        <div id="actions"></div>
+        <div id="handbar"></div>
+      </div>
+    </div>
+
+    <aside>
+      <div id="log">
+        <h3>できごと<button id="logmore" class="mini">詳しく</button></h3>
+        <div id="loglines"></div>
+      </div>
+      <div id="players-panel"></div>
+    </aside>
+  </main>
+
+  <!-- 銀行の山と、その下に出目の分布（普段は畳んである）。「できごと」のすぐ左 -->
+  <div id="sidestack">
+    <div id="bankpanel"></div>
+    <button id="disttoggle" title="出目の分布を出す／隠す">▾ 出目</button>
+    <div id="rolldist" hidden></div>
+  </div>
+
+  <!-- 詳細ログ。「できごと」と同じ大きさで、そのすぐ左隣に開く -->
+  <div id="drawer" hidden>
+    <div class="dhead">
+      <button id="dprev" class="nav" title="1 つ前の巡">◀</button>
+      <span id="dround">最新</span>
+      <button id="dnext" class="nav" title="次の巡">▶</button>
+      <button id="dlatest" class="mini">最新</button>
+      <button id="drawerclose" class="mini">閉じる</button>
+    </div>
+    <div id="dcols"></div>
+  </div>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

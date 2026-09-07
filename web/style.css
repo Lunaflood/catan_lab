@@ -1,0 +1,1420 @@
+/* デジタル前提の見た目。木や羊皮紙は使わない。
+   深い夜の海 + 冷たいガラスの面 + 少しの琥珀（勝利点だけ）。 */
+
+:root {
+  --bg-0: #070b10;
+  --bg-1: #0c131b;
+  --panel: rgba(20, 30, 40, .72);
+  --panel-solid: #101a24;
+  --edge: #1e2c39;
+  --edge-hi: #2b3f52;
+  --text: #e6edf3;
+  --muted: #8296a8;
+  --accent: #45d3c0;
+  --accent-dim: #1f6f66;
+  --amber: #f2b544;
+
+  --p0: #ff5a5a;
+  --p1: #4f9dff;
+  --p2: #f2f0ea;
+  --p3: #ffa23d;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+/* ページ自体はスクロールさせない。中の欄がそれぞれ自分でスクロールする */
+body { overflow: hidden; }
+
+/* 一面の海。盤も欄もこの上に浮かべる。
+   SVG の中に海を塗ると「縦横比を保って収まった矩形」の縁が見えてしまうので、
+   海はここ（ページの地）にしか置かない。 */
+body {
+  margin: 0;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 820px at 38% 32%, rgba(120,222,255,.32), transparent 64%),
+    radial-gradient(1000px 760px at 80% 76%, rgba(88,198,236,.28), transparent 62%),
+    linear-gradient(180deg, #2f8ab6 0%, #2678a4 45%, #2d87b0 100%);
+  background-attachment: fixed;
+  font: 14px/1.65 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------- ヘッダ */
+
+header {
+  display: flex; align-items: center; gap: 18px;
+  padding: 12px 20px;
+  background: rgba(6,20,31,.5);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  backdrop-filter: blur(14px);
+}
+header h1 {
+  margin: 0; font-size: 17px; letter-spacing: .3em; font-weight: 600; color: var(--text);
+}
+header h1::before {
+  content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 12px;
+  border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 14px var(--accent);
+  vertical-align: middle;
+}
+.controls { display: flex; gap: 10px; align-items: center; margin-left: auto; flex-wrap: wrap; }
+#setupbox { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+/* 上の帯を出し入れする矢印。畳んでいる間も押せるよう、盤の上に浮かせる */
+#uitoggle {
+  position: fixed; top: 6px; left: 6px; z-index: 60;
+  width: 26px; height: 22px; padding: 0; line-height: 1;
+  font-size: 11px; border-radius: 7px;
+  color: var(--muted); background: rgba(6,20,31,.6);
+  border-color: rgba(255,255,255,.12); backdrop-filter: blur(8px);
+}
+#uitoggle:hover { color: var(--text); }
+/* 音の入切。畳んだ帯の中に入れると、消したい時に探すことになる */
+#sfxtoggle {
+  position: fixed; top: 6px; left: 38px; z-index: 60;
+  width: 26px; height: 22px; padding: 0; line-height: 1;
+  font-size: 12px; border-radius: 7px;
+  color: var(--accent); background: rgba(6,20,31,.6);
+  border-color: var(--accent-dim); backdrop-filter: blur(8px);
+}
+#sfxtoggle.off { color: var(--muted); border-color: rgba(255,255,255,.12); text-decoration: line-through; }
+#sfxtoggle:hover { color: var(--text); }
+#uitoggle.on { color: var(--accent); border-color: var(--accent-dim); }
+header[hidden] { display: none; }
+.controls label { color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: center; }
+/* 出来事ごとの種。4 つ並ぶので小さくまとめる */
+.seeds {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 4px 9px; border-radius: 10px;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+}
+.seeds label { font-size: 10.5px; gap: 4px; letter-spacing: .04em; }
+
+/* その対局の出目の分布。銀行の山と同じ幅で、その下に開く。理論値を細い線で重ねる */
+#rolldist {
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 10px 11px 8px; border-radius: 16px;
+  background: rgba(6,20,31,.6);
+  border: 1px solid rgba(255,255,255,.13);
+  backdrop-filter: blur(20px) saturate(1.1);
+  box-shadow: 0 14px 34px rgba(2,14,24,.4);
+}
+#rolldist[hidden] { display: none; }
+.rdnone { font-size: 10px; color: var(--muted); letter-spacing: .06em; white-space: nowrap; }
+/* 見出し。何回ぶんの分布なのかと、細い線が理論値であることを書いておく */
+.rdhead {
+  display: flex; align-items: baseline; gap: 5px;
+  font-size: 9.5px; letter-spacing: .1em; color: var(--muted); white-space: nowrap;
+}
+.rdhead b { font-size: 13px; font-weight: 800; color: var(--text); letter-spacing: 0;
+  font-variant-numeric: tabular-nums; }
+.rdhead .rdkey { margin-left: auto; letter-spacing: .04em; }
+.rdhead .rdkey s { display: inline-block; width: 10px; height: 1px; background: rgba(255,255,255,.6);
+  vertical-align: middle; margin-right: 3px; }
+
+.rdbars { display: flex; align-items: flex-end; gap: 3px; }
+.rdbar {
+  position: relative; flex: 1 1 0; min-width: 0; height: 100px;
+  display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px;
+}
+/* 出た回数。棒の高さだけだと「何回」かが読めない */
+.rdbar em {
+  font-style: normal; font-size: 9.5px; font-weight: 700; line-height: 1;
+  color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.rdbar i {
+  display: block; width: 100%; border-radius: 3px 3px 0 0;
+  background: linear-gradient(180deg, #6ff0dd, var(--accent));
+}
+.rdbar.seven i { background: linear-gradient(180deg, #ffd982, var(--amber)); }
+.rdbar.seven em { color: var(--amber); }
+/* 出やすい目（6・8）は色を変えて、盤の赤い数字と同じ意味だと分かるようにする */
+.rdbar.hot i { background: linear-gradient(180deg, #ff9d8c, #ef5f4a); }
+.rdbar.hot em, .rdbar.hot b { color: #ff9d8c; }
+/* 理論値の目安線 */
+.rdbar u {
+  position: absolute; left: -1px; right: -1px; height: 1px;
+  background: rgba(255,255,255,.65);
+}
+.rdbar b {
+  font-size: 10px; font-weight: 700; color: var(--text); line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.rdbar.seven b { color: var(--amber); }
+.seeds input[type=number] { width: 78px; padding: 3px 7px; font-size: 11px; border-radius: 7px; }
+
+input, select, button {
+  color: var(--text); font: inherit;
+  background: rgba(255,255,255,.045);
+  border: 1px solid var(--edge); border-radius: 9px; padding: 6px 12px;
+}
+input[type=number] { width: 92px; }
+button { cursor: pointer; transition: background .16s, border-color .16s, transform .07s; }
+button:hover:not(:disabled) { background: rgba(69,211,192,.1); border-color: var(--accent-dim); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: .4; cursor: default; }
+
+/* ---------------------------------------------------------------- 配置 */
+
+#app { height: 100%; display: flex; flex-direction: column; }
+
+main {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) 344px;
+  gap: 0; padding: 0; align-items: stretch;
+}
+@media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+
+/* 盤の入れ物には背景も枠も持たせない。下の海がそのまま見える */
+#boardwrap {
+  position: relative; overflow: hidden;
+  height: 100%; min-height: 0;
+  transition: margin-right .24s ease;
+}
+/* ゆっくり漂う光。海が動いて見える程度に */
+#boardwrap::before, #boardwrap::after {
+  content: ""; position: absolute; border-radius: 50%; pointer-events: none;
+  filter: blur(70px); opacity: .22;
+}
+#boardwrap::before {
+  left: 4%; top: 8%; width: 46%; height: 44%;
+  background: #7fe6ff; animation: drift 26s ease-in-out infinite alternate;
+}
+#boardwrap::after {
+  right: 6%; bottom: 10%; width: 42%; height: 40%;
+  background: #49c4e8; animation: drift 34s ease-in-out infinite alternate-reverse;
+}
+/* 右下の手札と操作の欄を避けるぶんだけ、盤を左へ寄せる。
+   寄せすぎると左が窮屈になるので、余白の半分だけを右に取る */
+#board { display: block; width: 100%; height: 100%; padding-right: 70px; }
+
+/* 手番の欄（今の状況・手札・できること）。盤の右下、プレイヤー欄のとなり。
+   右の欄に積むとプレイヤー欄を押し出してしまうので、盤の上に浮かせる */
+#turnbox[hidden] { display: none; }
+#turnbox {
+  position: absolute; right: 14px; bottom: 14px; z-index: 14;
+  width: min(404px, calc(100% - 28px));
+  display: flex; flex-direction: column; gap: 9px;
+  padding: 11px 13px 12px; border-radius: 16px;
+  /* 盤が透けて見えるくらいの濃さに。字が読めるのはぼかしが効いているから */
+  background: rgba(5,20,32,.6); border: 1px solid rgba(255,255,255,.13);
+  backdrop-filter: blur(20px) saturate(1.1);
+  box-shadow: 0 20px 50px rgba(1,10,18,.6);
+}
+#turnbox .hfoot { margin-top: 7px; }
+#actions { display: flex; flex-wrap: wrap; gap: 7px; }
+
+#prompt {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-size: 12.5px; color: var(--muted);
+}
+#prompt[hidden] { display: none; }
+/* 小さいサイコロは出さない。盤の中央で転がるものと棋譜で足りる */
+#dicebox { display: none; }
+#prompttext { display: flex; align-items: center; gap: 14px; }
+#prompt .who { color: var(--accent); font-weight: 600; }
+#prompt .clock { color: var(--muted); font-variant-numeric: tabular-nums; }
+#prompt .clock.danger { color: #ff8a6b; font-weight: 600; }
+#dicebox { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+#dicebox .sum {
+  margin-left: 4px; font-weight: 700; font-size: 15px; color: var(--amber);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- 盤の中央で転がすサイコロ */
+
+#rollfx {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  gap: 22px; pointer-events: none; z-index: 20;
+}
+/* 盤の数字トークンと目が混ざらないよう、転がっている間だけ中央を暗くする */
+#rollfx::before {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(3,7,11,.62) 0%, rgba(3,7,11,.34) 28%, rgba(3,7,11,0) 52%);
+  animation: scrimin .3s ease both;
+}
+@keyframes scrimin { from { opacity: 0; } to { opacity: 1; } }
+#rollfx[hidden] { display: none; }
+#rollfx.out { animation: fxout .45s ease forwards; }
+@keyframes fxout { to { opacity: 0; transform: scale(.86); } }
+
+.bigdie {
+  width: 76px; height: 76px; border-radius: 16px;
+  background: linear-gradient(150deg, #ffffff, #cfd8e2);
+  box-shadow: 0 18px 40px rgba(0,0,0,.6), inset 0 -6px 10px rgba(0,0,0,.14),
+              inset 0 4px 8px rgba(255,255,255,.9);
+  display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); padding: 11px;
+}
+.bigdie i {
+  width: 13px; height: 13px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #4a5563, #10161d);
+  align-self: center; justify-self: center;
+}
+/* カランカラン: 高いところから落ちて、2 度跳ねて止まる */
+.bigdie.rolling { animation: diceRoll 620ms cubic-bezier(.3,.7,.4,1) both; }
+#bd1.rolling { animation-duration: 690ms; animation-delay: 50ms; }
+@keyframes diceRoll {
+  0%   { transform: translateY(-190px) rotate(-460deg) scale(.6); opacity: 0; }
+  10%  { opacity: 1; }
+  46%  { transform: translateY(18px) rotate(-120deg) scale(1.08); }
+  58%  { transform: translateY(-42px) rotate(-46deg) scale(.98); }
+  74%  { transform: translateY(10px) rotate(14deg) scale(1.04); }
+  86%  { transform: translateY(-12px) rotate(-6deg) scale(1); }
+  100% { transform: translateY(0) rotate(0) scale(1); }
+}
+.bigdie.landed { animation: diceLand .34s cubic-bezier(.25,1.7,.45,1); }
+@keyframes diceLand {
+  0% { transform: scale(1.18, .82); } 60% { transform: scale(.96, 1.05); } 100% { transform: scale(1); }
+}
+/* 合計はサイコロのすぐ下。盤の絵に重なるので必ず下敷きを敷く */
+#rollsum {
+  position: absolute; top: calc(50% + 62px); left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 18px; border-radius: 999px; white-space: nowrap;
+  font-size: 12px; letter-spacing: .22em; color: var(--muted); opacity: 0;
+  background: rgba(6,11,16,.92);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 12px 30px rgba(0,0,0,.6);
+}
+#rollsum.show { animation: sumin .4s ease forwards; }
+@keyframes sumin { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+#rollsum b { font-size: 25px; font-weight: 700; color: var(--amber); letter-spacing: 0; line-height: 1; }
+
+/* ---------------------------------------------------------------- 結果 */
+
+#result {
+  position: absolute; inset: 0; z-index: 30;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(3,10,16,.62);
+  animation: fadein .25s ease-out;
+}
+#result[hidden] { display: none; }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+
+.rcard {
+  min-width: min(780px, 94%); max-width: 94%;
+  padding: 26px 30px 22px; border-radius: 20px;
+  background: var(--panel-solid, #101a24);
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow: 0 30px 80px rgba(0,0,0,.7);
+  animation: rpop .3s cubic-bezier(.2,1.3,.4,1);
+}
+@keyframes rpop { from { transform: scale(.94) translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.rhead {
+  display: flex; align-items: center; gap: 13px; padding-bottom: 16px; margin-bottom: 14px;
+  border-bottom: 1px solid var(--edge);
+}
+.rhead .sw { width: 18px; height: 18px; border-radius: 50%; background: var(--c);
+             box-shadow: 0 0 18px var(--c); }
+.rhead b { font-size: 27px; letter-spacing: .04em; }
+.rhead .rturn { margin-left: auto; font-size: 13px; color: var(--muted); }
+
+.rtable { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.rtable th {
+  font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .06em;
+  padding: 0 10px 9px; text-align: right; white-space: nowrap;
+}
+.rtable th:nth-child(2) { text-align: left; }
+.rtable td { padding: 11px 10px; text-align: right; font-size: 19px; font-weight: 600; }
+.rtable tr { --c: var(--accent); }
+.rtable tbody tr {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--c) 16%, transparent),
+    color-mix(in srgb, var(--c) 4%, transparent));
+}
+.rtable tbody tr.win {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--c) 34%, transparent),
+    color-mix(in srgb, var(--c) 10%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent);
+}
+.rtable td.rank { width: 38px; text-align: center; color: var(--muted); font-size: 16px; }
+.rtable tbody tr.win td.rank::before { content: "👑"; font-size: 19px; }
+.rtable tbody tr.win td.rank { font-size: 0; }
+.rtable td.who {
+  text-align: left; font-weight: 700; white-space: nowrap; font-size: 17px;
+  display: flex; align-items: center; gap: 10px;
+}
+.rtable td.who .sw { width: 11px; height: 11px; border-radius: 50%; background: var(--c); }
+.rtable td.z { color: var(--muted); opacity: .4; }
+.rtable td.total {
+  font-size: 30px; font-weight: 800; color: var(--amber); width: 74px;
+}
+.rtable tbody tr td:first-child { border-radius: 10px 0 0 10px; }
+.rtable tbody tr td:last-child { border-radius: 0 10px 10px 0; }
+.rtable tbody tr + tr td { box-shadow: 0 -4px 0 var(--panel-solid, #101a24); }
+
+.rnew {
+  display: block; width: 100%; margin-top: 20px; padding: 14px;
+  font-size: 17px; font-weight: 800; letter-spacing: .08em; border-radius: 13px;
+  color: #2a1b04; background: linear-gradient(180deg, #ffcf46, #f0a52a);
+  border-color: #ffd977;
+}
+.rnew:hover { background: linear-gradient(180deg, #ffdb66, #ffb63c); }
+
+/* ---------------------------------------------------------------- パネル */
+
+aside { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: hidden; padding: 14px 14px 14px 0; }
+/* できごとが伸びる。プレイヤー欄は縮めない */
+#log { display: flex; flex-direction: column; flex: 1 1 0; min-height: 100px; }
+#loglines { flex: 1; overflow-y: auto; min-height: 0; }
+#players-panel { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+aside > div {
+  min-height: 0;
+  background: rgba(6,20,31,.62); border: 1px solid rgba(255,255,255,.09); border-radius: 14px;
+  padding: 12px 14px; backdrop-filter: blur(16px);
+  box-shadow: 0 14px 34px rgba(2,14,24,.4);
+}
+
+h3 {
+  margin: 0 0 10px; font-size: 10.5px; color: var(--muted);
+  font-weight: 700; letter-spacing: .18em;
+  display: flex; align-items: center; gap: 10px;
+}
+h3::after { content: ""; flex: 1; height: 1px; background: var(--edge); }
+
+/* --- プレイヤー --- */
+/* 各行はその人の色で薄く塗る。誰の行かを字ではなく面で分からせる */
+.pl {
+  display: grid; grid-template-columns: 4px auto 1fr; gap: 11px; align-items: center;
+  padding: 7px 10px; border-radius: 10px; margin: 3px -5px;
+  transition: opacity .25s, background .25s, filter .25s;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--c) 22%, transparent),
+    color-mix(in srgb, var(--c) 7%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 22%, transparent);
+}
+.pl .swatch { width: 4px; height: 100%; min-height: 40px; border-radius: 3px; }
+.pl .name { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 4px; }
+.pl .tag {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .05em;
+  color: #08131a; background: var(--accent); border-radius: 5px; padding: 1px 6px;
+}
+.pl .stats { display: flex; gap: 14px; margin-top: 4px; }
+.pl .stats span { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.pl .stats svg { display: block; }
+.pl .stats b { font-size: 17px; color: var(--text); font-variant-numeric: tabular-nums; font-weight: 700; }
+/* 7 枚を超えている手札。7 が出たら半分捨てる＝狙い目でもあるので、全員ぶん赤くする */
+.pl .stats b.over { color: #ff6e60; text-shadow: 0 0 10px rgba(255,110,96,.55); }
+/* 残りの駒 */
+.pl .left { display: flex; gap: 12px; margin-top: 3px; font-size: 11px; color: var(--muted); align-items: center; }
+.pl .left .lb { letter-spacing: .1em; font-size: 10px; }
+.pl .left span { display: inline-flex; align-items: center; gap: 4px; }
+.pl .left b { color: #c3d2df; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; }
+.pl .left .none { color: #ff7a6b; }
+/* 点数は左端。数字の右に小さく pt、その下に誰の点かを書く */
+.pscore {
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+  width: 56px; white-space: nowrap;
+}
+.pl .vp {
+  display: flex; align-items: baseline; justify-content: center; gap: 2px;
+  font-variant-numeric: tabular-nums; font-weight: 800; font-size: 20px;
+  color: var(--amber); line-height: 1.1;
+}
+.pl .vp i {
+  font-style: normal; font-size: 10px; font-weight: 700; letter-spacing: .04em;
+  color: var(--muted);
+}
+/* 称号は名前の横に置くと点数の列が伸びる。右の欄の頭に出す */
+.ptags { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 3px; }
+.pl .me { font-size: 9.5px; font-weight: 700; letter-spacing: .06em; color: var(--muted); line-height: 1.2; }
+/* 手番でない人は落とす。誰の番かは一目で分かる必要がある */
+.pl:not(.active) { opacity: .55; filter: saturate(.75); }
+
+/* 手番の人は濃く塗って、その人の色で光らせる */
+.pl.active {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--c) 36%, transparent),
+    color-mix(in srgb, var(--c) 13%, transparent));
+  animation: plglow 2.4s ease-in-out infinite;
+}
+@keyframes plglow {
+  0%, 100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 70%, transparent),
+                0 0 14px color-mix(in srgb, var(--c) 30%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 2px var(--c),
+                0 0 26px color-mix(in srgb, var(--c) 60%, transparent);
+  }
+}
+/* 手番の印。色だけに頼らない */
+.pl.active .name::before {
+  content: "▶"; color: var(--c); font-size: 10px; margin-right: 2px;
+}
+
+/* --- 手札（盤の右下） --- */
+#handbar { flex: 0 0 auto; margin-top: 2px; }
+.hcards { justify-content: space-between; }
+.hcards { display: flex; gap: 6px; align-items: stretch; }
+.hcard {
+  /* トランプ札のような縦長（およそ 2:3）。真四角だとカードに見えない */
+  position: relative; flex: 1 1 0; min-width: 0; aspect-ratio: 2 / 3; height: auto;
+  border-radius: 9px;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  padding-bottom: 9px;
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow: 0 6px 14px rgba(0,0,0,.45);
+  transition: transform .18s;
+}
+.hcard::after {
+  content: ""; position: absolute; inset: 3px; border-radius: 6px;
+  border: 1px solid rgba(255,255,255,.14); pointer-events: none;
+}
+.hcard:hover { transform: translateY(-5px); }
+.hcard .hglyph { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); }
+.hcard .hn {
+  font-size: 27px; font-weight: 800; line-height: 1;
+  font-variant-numeric: tabular-nums; color: #fff;
+  text-shadow: 0 2px 6px rgba(0,0,0,.5);
+}
+.hcard .hl { font-size: 12px; font-weight: 700; letter-spacing: .05em; color: rgba(255,255,255,.88); }
+.hcard.zero { opacity: .28; }
+/* 交易・廃棄を組んでいる間は「成立後の枚数」を出す。増減が分かるよう縁に色を付ける */
+.hcard.up { box-shadow: 0 0 0 2px var(--accent), 0 6px 14px rgba(0,0,0,.45); }
+.hcard.down { box-shadow: 0 0 0 2px #ff6e60, 0 6px 14px rgba(0,0,0,.45); }
+.hcard.up .hn { color: #b6f5ea; }
+.hcard.down .hn { color: #ffb3a8; }
+.hcard.WOOD  { background: linear-gradient(160deg, #1e4d33, #0e2b1d); }
+.hcard.BRICK { background: linear-gradient(160deg, #6d2d19, #3d160c); }
+.hcard.SHEEP { background: linear-gradient(160deg, #3f5c28, #1f3013); }
+.hcard.WHEAT { background: linear-gradient(160deg, #6d5115, #3a2a08); }
+.hcard.ORE   { background: linear-gradient(160deg, #37414f, #1a2029); }
+
+.hfoot {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 9px; font-size: 11px; color: var(--muted);
+}
+.hfoot .htotal.danger { color: #ff8a6b; font-weight: 700; }
+.hfoot .hdev span {
+  display: inline-block; background: rgba(255,255,255,.06); border: 1px solid var(--edge);
+  border-radius: 6px; padding: 1px 7px; margin-left: 4px; color: var(--text);
+}
+
+/* --- できること（盤の下の操作卓） --- */
+
+/* 1 行に収める。縦に積むと 8 個で欄を食い潰してプレイヤー欄が押し出される */
+.tile {
+  display: flex; align-items: center; gap: 8px;
+  flex: 1 1 168px; min-width: 168px; padding: 8px 11px; text-align: left;
+  border-radius: 11px;
+  /* 押せる手ははっきり浮かせる。
+     欄が透けていても字が読めるよう、ボタン自体には明るい下地を敷く */
+  background: linear-gradient(180deg, #35597b, #24405c);
+  border: 1px solid rgba(255,255,255,.3);
+  box-shadow: 0 2px 0 rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.2);
+  transition: background .16s, border-color .16s, opacity .16s;
+}
+.tile .ticon { display: flex; opacity: 1; }
+.tile .tname { font-size: 13px; font-weight: 700; line-height: 1.25; white-space: nowrap; color: #ffffff; }
+.tile .tsub {
+  margin-left: auto; font-size: 10.5px; color: var(--muted); line-height: 1.25;
+  display: flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+.tile .tsub .no { color: #ff8f80; opacity: .85; }
+/* 自分の持っている発展カード（プレイヤー欄の自分の行） */
+.pl .mydev { margin-top: 4px; }
+.pl .mydev .dv { font-size: 10px; }
+
+/* 持っている発展カードの内訳 */
+.devheld { display: inline-flex; gap: 4px; }
+.devheld .dv {
+  font-size: 10px; font-weight: 700; color: #cdfaf2;
+  background: rgba(69,211,192,.16); border-radius: 5px; padding: 1px 5px;
+}
+/* できない手も消さずに残す。ただし押せる物とは見た目をはっきり分ける
+   （色を落とす・地をなくす・枠を破線にする、の 3 つを同時に） */
+.tile.off {
+  /* 押せない手も字は読める。透かすのではなく、色を落として枠を破線にする */
+  opacity: .55; filter: grayscale(1);
+  background: rgba(12,22,33,.85);
+  border: 1px dashed rgba(255,255,255,.18);
+  box-shadow: none;
+}
+.tile:not(.off):hover {
+  background: linear-gradient(180deg, #4287b0, #2d6488);
+  border-color: var(--accent);
+}
+.tile:not(.off):active { transform: translateY(1px); box-shadow: inset 0 1px 0 rgba(255,255,255,.2); }
+.tile.big { flex: 1 1 100%; padding: 12px 16px; display: grid;
+  grid-template-columns: auto minmax(0,1fr); grid-template-rows: auto auto; gap: 0 10px; }
+.tile.big .ticon { grid-row: 1 / span 2; align-self: center; }
+.tile.big .tsub { margin-left: 0; }
+.tile.big .tname { font-size: 15px; }
+.tile.roll {
+  background: linear-gradient(180deg, rgba(69,211,192,.22), rgba(69,211,192,.08));
+  border-color: var(--accent-dim); color: #cdfaf2;
+}
+.tile.roll .tname { font-size: 16px; }
+/* 手番を終えるのは 1 手番に 1 度の区切り。はっきり分かる黄色で置く */
+.tile.end {
+  flex: 1 1 100%;
+  background: linear-gradient(180deg, #ffcf46, #f0a52a);
+  border-color: #ffd977;
+  box-shadow: 0 4px 14px rgba(242,165,42,.28);
+}
+.tile.end:hover { background: linear-gradient(180deg, #ffdb66, #ffb63c); border-color: #fff0bd; }
+.tile.end .tname { color: #2a1b04; font-weight: 800; letter-spacing: .04em; }
+.tile.end .ticon { display: none; }
+.tile.wide { flex: 1 1 100%; }
+/* 交易の画面のボタンは中央揃え（左に名前・右に注釈だと視線が散る） */
+.tile.mid { justify-content: center; text-align: center; }
+.tile.mid .tsub { margin-left: 0; }
+.tile.big.mid { grid-template-columns: 1fr; justify-items: center; }
+
+/* 建てるのに要る資源。足りない物は赤く落とす */
+.cost { display: inline-flex; gap: 6px; }
+.cc { display: inline-flex; align-items: center; gap: 1px; font-weight: 700; color: #cfdce7; }
+.cc svg { display: block; }
+.cc.short { color: #ff8f80; opacity: .6; }
+
+.banner {
+  flex: 0 0 100%; padding: 8px 13px; border-radius: 11px; font-size: 12.5px; color: var(--muted);
+  background: rgba(12,22,33,.85); border: 1px solid rgba(255,255,255,.12);
+}
+.banner b { color: var(--text); }
+.banner.pick { border-color: var(--accent-dim); color: #bff5ec; background: rgba(69,211,192,.1); }
+.banner.win { color: var(--amber); font-size: 15px; font-weight: 700; }
+
+/* --- 交渉の場（条件は必ず絵で見せる。文字だと何を出すのか読み取れない） --- */
+/* 提案してきた人の色で塗る。プレイヤー欄と同じ色づかい */
+.offerbox {
+  flex: 1 1 100%; padding: 9px 12px; border-radius: 11px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--c, var(--accent)) 40%, transparent),
+    color-mix(in srgb, var(--c, var(--accent)) 14%, transparent));
+  border: 1px solid color-mix(in srgb, var(--c, var(--accent)) 55%, transparent);
+  border-left: 4px solid var(--c, var(--accent));
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.offerbox b { font-size: 13.5px; font-weight: 800; color: #fff; white-space: nowrap; }
+.offerbox .deal { flex: 1 1 auto; }
+
+/* この画面で最初に読む場所。「渡す」「欲しい」が薄い字だと条件を読み違える。
+   札のように地を敷いて、絵も一回り大きくする */
+.offerbox .deal { font-size: 12.5px; gap: 6px; }
+.offerbox .deal .dl {
+  font-size: 10px; font-weight: 800; letter-spacing: .08em;
+  color: #f2fbff; background: rgba(0, 0, 0, .3);
+  border-radius: 6px; padding: 2px 8px;
+}
+.offerbox .deal .darrow { font-size: 16px; color: #fff; margin: 0 4px; }
+.offerbox .deal .chip { font-size: 12.5px; padding: 2px 8px 2px 5px; }
+.offerbox .deal .chip svg { width: 19px; height: 19px; }
+.offerbox .deal .chip.out { background: rgba(255, 110, 96, .3); color: #ffe2dc; }
+.offerbox .deal .chip.in  { background: rgba(69, 211, 192, .3); color: #dcfff8; }
+.deal { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 11px; }
+.deal .dl { color: var(--muted); font-size: 10px; letter-spacing: .06em; }
+.deal .darrow { color: var(--accent); font-weight: 700; margin: 0 3px; }
+.chip.none { background: rgba(255,255,255,.06); color: var(--muted); font-weight: 400; }
+
+
+/* 選んで成立させる行（相手の対案・銀行のレート） */
+.tile.pick {
+  flex: 1 1 100%; display: flex; align-items: center; gap: 10px;
+  padding: 7px 11px; text-align: left;
+}
+.tile.pick .pname {
+  flex: 0 0 auto; font-size: 12px; font-weight: 700; color: var(--text);
+  border-left: 3px solid var(--c, var(--accent)); padding-left: 7px;
+}
+.tile.pick .deal { flex: 1 1 auto; }
+
+/* 盗む相手を選ぶカード。持ち物を見て決められるようにする */
+/* 3 人ぶんを **横に等分** で並べる。
+   折り返すと 2 枚 + 1 枚の L 字になって落ち着かないので、列数は固定する */
+.victims {
+  flex: 1 1 100%; display: grid; gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+/* プレイヤー欄と同じく、その人の色で薄く塗る */
+.vcard {
+  min-width: 0; overflow: hidden; text-align: left;
+  padding: 7px 8px 8px; border-radius: 11px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--c) 22%, transparent),
+    color-mix(in srgb, var(--c) 7%, transparent));
+  border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
+  border-left: 3px solid var(--c);
+}
+.vcard:not(.off):hover {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--c) 36%, transparent),
+    color-mix(in srgb, var(--c) 13%, transparent));
+  border-color: var(--accent); border-left-color: var(--c);
+}
+.vcard.off { opacity: .4; }
+.vhead { display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; }
+.vhead .sw { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.vvp {
+  margin-left: auto; font-size: 15px; font-weight: 800; color: var(--amber);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.vvp i { font-size: 9px; font-style: normal; color: var(--muted); margin-left: 1px; }
+/* 持ち物は 2×2。横 1 列だと幅ぎりぎりで 3+1 に折れて L 字になる */
+.vstats {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; margin-top: 5px;
+}
+.vstats span { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); min-width: 0; }
+.vstats svg { display: block; }
+.vstats b { font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums; }
+.vno { margin-top: 3px; font-size: 10px; color: #ff8f80; line-height: 1.3; }
+
+/* 独占・収穫で選ぶカード */
+.pickrow { flex: 1 1 100%; flex-wrap: wrap; }
+.rescard {
+  position: relative; flex: 1 1 0; min-width: 62px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  padding: 11px 5px 8px; border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.14);
+}
+.rescard::after {
+  content: ""; position: absolute; inset: 3px; border-radius: 7px;
+  border: 1px solid rgba(255,255,255,.1); pointer-events: none;
+}
+.rescard .pair { display: flex; gap: 3px; }
+.rescard .rl { font-size: 10.5px; font-weight: 600; color: rgba(255,255,255,.88); }
+.rescard.WOOD  { background: linear-gradient(160deg, #1e4d33, #0e2b1d); }
+.rescard.BRICK { background: linear-gradient(160deg, #6d2d19, #3d160c); }
+.rescard.SHEEP { background: linear-gradient(160deg, #3f5c28, #1f3013); }
+.rescard.WHEAT { background: linear-gradient(160deg, #6d5115, #3a2a08); }
+.rescard.ORE   { background: linear-gradient(160deg, #37414f, #1a2029); }
+.rescard:hover:not(:disabled) { border-color: var(--accent); }
+/* 銀行・港との交換で選ぶ小さいカード */
+.rescard.sm { min-width: 0; padding: 7px 3px 6px; gap: 3px; }
+.rescard.sm .rl { font-size: 10px; font-variant-numeric: tabular-nums; }
+.rescard.off { opacity: .26; filter: grayscale(.7); }
+.rescard.on {
+  border-color: var(--accent); box-shadow: 0 0 0 2px rgba(69,211,192,.35);
+}
+.rescard.on::before {
+  content: "✓"; position: absolute; top: 2px; right: 5px;
+  font-size: 11px; font-weight: 700; color: var(--accent);
+}
+
+.tlabel .short { color: #ff8f80; }
+
+/* 積んだ対案の候補。中身が見えないと、間違えて積んだのか分からない */
+.staged {
+  flex: 1 1 100%; font-size: 11px;
+  background: rgba(242,181,68,.09); border: 1px solid rgba(242,181,68,.28);
+  border-radius: 10px; padding: 6px 9px 7px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.staged .sl { color: var(--amber); letter-spacing: .06em; font-size: 10px; font-weight: 700; }
+.stitem {
+  display: flex; align-items: center; gap: 7px;
+  background: rgba(0,0,0,.22); border-radius: 7px; padding: 3px 5px 3px 7px;
+}
+.stitem .sn {
+  flex: 0 0 auto; font-size: 10px; font-weight: 700; color: var(--amber);
+  font-variant-numeric: tabular-nums;
+}
+.stitem .deal { flex: 1 1 auto; }
+.stitem .sdel {
+  flex: 0 0 auto; padding: 0; width: 20px; height: 20px; line-height: 1;
+  font-size: 11px; border-radius: 6px; color: var(--muted);
+  background: rgba(255,255,255,.05);
+}
+.stitem .sdel:hover { color: #ff8f80; border-color: rgba(255,110,96,.5); }
+
+/* --- 交易の提案（枚数を絵で決める） --- */
+.trade { flex: 1 1 100%; display: flex; flex-direction: column; gap: 5px; }
+.tlabel {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 10.5px; letter-spacing: .1em; color: var(--muted); font-weight: 700;
+}
+.tlabel span { margin-left: auto; letter-spacing: 0; color: var(--text); font-variant-numeric: tabular-nums; }
+/* 上の段が「もらう」、下の段が「わたす」。
+   ここを読み違えると逆の交易を出してしまうので、薄い字ではなく色の付いた札で示す */
+.tarrow {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 2px 0; margin: 1px 0;
+  font-size: 11px; font-weight: 800; letter-spacing: .06em; line-height: 1.4;
+}
+.tarrow::before, .tarrow::after {
+  content: ""; flex: 1 1 0; height: 1px; background: rgba(255, 255, 255, .16);
+}
+.tarrow span { flex: 0 0 auto; padding: 2px 10px; border-radius: 999px; }
+.tarrow .up { color: #04241f; background: #45d3c0; box-shadow: 0 0 12px rgba(69, 211, 192, .35); }
+.tarrow .dn { color: #2b0b06; background: #ff9d8c; box-shadow: 0 0 12px rgba(255, 122, 100, .3); }
+.trow { display: flex; gap: 5px; }
+.tcard {
+  position: relative; flex: 1 1 0; min-width: 0;
+  display: grid; grid-template-columns: 18px 1fr 18px;
+  grid-template-rows: 1fr auto; align-items: center; gap: 1px;
+  padding: 7px 3px 5px; border-radius: 9px;
+  border: 1px solid rgba(255,255,255,.13);
+}
+.tcard::after {
+  content: ""; position: absolute; inset: 3px; border-radius: 6px;
+  border: 1px solid rgba(255,255,255,.1); pointer-events: none;
+}
+.tcard.locked { opacity: .3; }
+/* 手札に無い資源は出せない。落として、線を引いて分かるようにする */
+.tcard.empty { opacity: .26; filter: grayscale(.7); }
+.tcard.empty .thave { color: #ff8f80; opacity: 1; }
+.tcard .tglyph { grid-column: 2; display: flex; justify-content: center; }
+.tcard .tn {
+  grid-column: 2; text-align: center; font-size: 15px; font-weight: 800; line-height: 1.1;
+  font-variant-numeric: tabular-nums; color: #fff;
+}
+.tcard .thave {
+  position: absolute; right: 3px; top: 2px;
+  font-size: 9px; color: rgba(255,255,255,.6); font-variant-numeric: tabular-nums;
+}
+.tcard button {
+  grid-row: 1 / span 2; padding: 0; width: 18px; height: 42px;
+  font-size: 13px; line-height: 1; border-radius: 5px;
+  background: rgba(0,0,0,.28); border-color: rgba(255,255,255,.14); color: #fff;
+}
+.tcard .tminus { grid-column: 1; }
+.tcard .tplus { grid-column: 3; }
+.tcard button:disabled { opacity: .22; }
+.tcard.WOOD  { background: linear-gradient(160deg, #1e4d33, #0e2b1d); }
+.tcard.BRICK { background: linear-gradient(160deg, #6d2d19, #3d160c); }
+.tcard.SHEEP { background: linear-gradient(160deg, #3f5c28, #1f3013); }
+.tcard.WHEAT { background: linear-gradient(160deg, #6d5115, #3a2a08); }
+.tcard.ORE   { background: linear-gradient(160deg, #37414f, #1a2029); }
+
+/* 小メニュー（銀行と交換・提案・発展カード）。数が多いので横スクロールで畳む */
+.sublist {
+  flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px;
+  max-height: 108px; overflow-y: auto;
+}
+.subitem {
+  padding: 6px 11px; font-size: 12px; border-radius: 9px;
+  background: linear-gradient(180deg, #35597b, #24405c);
+  border-color: rgba(255,255,255,.3); color: #fff;
+}
+.subitem:hover { background: linear-gradient(180deg, #4287b0, #2d6488); border-color: var(--accent); }
+.subitem.strong { border-color: var(--accent-dim); color: #bff5ec; background: rgba(69,211,192,.14); }
+
+/* --- ログ --- */
+#log { font-size: 12.5px; }
+/* 何を払って何を得たかをカードの絵で。文字だけだと読み飛ばす */
+.flow { display: inline-flex; gap: 4px; margin-left: 7px; vertical-align: middle; flex-wrap: wrap; }
+.chip {
+  display: inline-flex; align-items: center; gap: 1px;
+  padding: 0 5px 0 3px; border-radius: 6px;
+  font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.chip svg { display: block; }
+.chip.out { background: rgba(255,110,96,.16); color: #ff9b8f; }
+.chip.in  { background: rgba(69,211,192,.17); color: #7fe8d8; }
+#loglines { display: flex; flex-direction: column; }
+.line {
+  display: grid; grid-template-columns: 3px 1fr; gap: 10px; align-items: center;
+  padding: 4px 0; color: var(--muted);
+}
+.line .txt { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 0; }
+.line .who { width: 3px; height: 14px; border-radius: 2px; }
+#loglines .line:first-child { color: var(--text); }
+
+button.mini {
+  margin-left: auto; padding: 3px 10px; font-size: 10.5px; border-radius: 8px;
+  color: var(--muted); letter-spacing: .06em; font-weight: 400;
+}
+
+/* 銀行の山。「できごと」のすぐ左に、資源ごとの札を横一列で置く。
+   枚数は出さない ── ここは札の出入りを見せるための場所 */
+#sidestack {
+  position: fixed; z-index: 20;
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px;
+}
+#bankpanel {
+  display: flex; gap: 7px;
+  padding: 10px; border-radius: 16px;
+  background: rgba(6,20,31,.6);
+  border: 1px solid rgba(255,255,255,.13);
+  backdrop-filter: blur(20px) saturate(1.1);
+  box-shadow: 0 14px 34px rgba(2,14,24,.4);
+}
+/* 出目の分布を出し入れする小さな帯 */
+#disttoggle {
+  padding: 3px 0; font-size: 10.5px; letter-spacing: .1em; border-radius: 9px;
+  color: var(--muted); background: rgba(6,20,31,.6);
+  border-color: rgba(255,255,255,.12); backdrop-filter: blur(12px);
+}
+#disttoggle:hover { color: var(--text); }
+#disttoggle.on { color: var(--accent); border-color: var(--accent-dim); }
+.bpcard {
+  width: 58px; height: 58px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255,255,255,.16);
+}
+.bpcard svg { display: block; }
+.bpcard.WOOD  { background: linear-gradient(160deg, #1e4d33, #0e2b1d); }
+.bpcard.BRICK { background: linear-gradient(160deg, #6d2d19, #3d160c); }
+.bpcard.SHEEP { background: linear-gradient(160deg, #3f5c28, #1f3013); }
+.bpcard.WHEAT { background: linear-gradient(160deg, #6d5115, #3a2a08); }
+.bpcard.ORE   { background: linear-gradient(160deg, #37414f, #1a2029); }
+/* 発展カードの山。資源ではないので、間を空けて色も分ける */
+.bpcard.DEV {
+  background: linear-gradient(160deg, #4a3780, #241a45);
+  margin-left: 5px;
+  box-shadow: inset 0 0 0 1px rgba(205, 188, 255, .28);
+}
+
+/* 銀行の欄と手札の間を飛ぶ札。盤の外なので画面座標で置く */
+.flycard {
+  position: fixed; z-index: 80; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  will-change: transform, opacity;
+}
+.fcard {
+  width: 100%; height: 100%; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255, 255, 255, .22);
+  box-shadow: 0 8px 20px rgba(2, 12, 22, .5);
+}
+.fcard.WOOD  { background: linear-gradient(160deg, #2b6a45, #123722); }
+.fcard.BRICK { background: linear-gradient(160deg, #8a3a20, #4a1a0e); }
+.fcard.SHEEP { background: linear-gradient(160deg, #4e7132, #263c18); }
+.fcard.WHEAT { background: linear-gradient(160deg, #8a661b, #47340a); }
+.fcard.ORE   { background: linear-gradient(160deg, #47525f, #212832); }
+.fcard.DEV   { background: linear-gradient(160deg, #4a3780, #241a45); }
+
+#drawer[hidden] { display: none; }
+
+/* 詳細ログは「できごと」と同じ大きさで、そのすぐ左隣に開く。
+   位置と大きさは JS が「できごと」の実寸に合わせる（inline style）。
+   盤の上に大きく開くと手札や駒が隠れるので、大きさは変えない */
+#drawer {
+  position: fixed; z-index: 40;
+  display: flex; flex-direction: column;
+  background: rgba(6,20,31,.66);
+  backdrop-filter: blur(20px) saturate(1.1);
+  border: 1px solid rgba(255,255,255,.13); border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(1,10,18,.55);
+  padding: 12px 14px;
+  animation: slidein .18s cubic-bezier(.2,.9,.3,1);
+}
+@keyframes slidein { from { transform: translateX(14px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+#drawer .dhead {
+  display: flex; align-items: center; gap: 6px; padding-bottom: 9px; margin-bottom: 6px;
+  border-bottom: 1px solid var(--edge);
+}
+#dround {
+  font-size: 12px; font-weight: 700; color: var(--text); letter-spacing: .06em;
+  display: flex; align-items: center; gap: 7px; min-width: 78px;
+}
+#dround .now {
+  font-size: 9px; font-weight: 700; letter-spacing: .06em; color: #08131a;
+  background: var(--accent); border-radius: 999px; padding: 1px 6px;
+}
+button.nav {
+  padding: 2px 8px; font-size: 11px; line-height: 1.4; border-radius: 7px;
+  color: var(--text); background: rgba(255,255,255,.05);
+}
+button.nav:disabled { opacity: .25; }
+#dlatest { margin-left: auto; }
+#drawerclose { margin-left: 0; }
+
+/* 4 人を縦に区切って横へ並べる。スクロールするのは各列の中身だけ */
+#dcols {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px; background: rgba(255,255,255,.1);
+  border-radius: 10px; overflow: hidden;
+}
+.dcol {
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  background: rgba(6,20,31,.35);
+}
+.dcolhead {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+  font-size: 11px; font-weight: 700; color: var(--text);
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+  border-bottom: 1px solid var(--edge);
+}
+.dcolhead .sw { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+.dbn {
+  margin-left: auto; font-size: 9.5px; font-weight: 600; color: var(--muted);
+  background: rgba(255,255,255,.07); border-radius: 999px; padding: 0 6px;
+}
+/* 縦にスクロールするのはここだけ */
+.dcolbody { flex: 1; min-height: 0; overflow-y: auto; padding: 5px 8px 8px; }
+.dline {
+  padding: 3px 0; color: var(--muted); font-size: 11px; line-height: 1.45;
+  display: flex; align-items: center; flex-wrap: wrap;
+}
+.dline + .dline { border-top: 1px solid rgba(255,255,255,.045); }
+.dempty { color: var(--muted); opacity: .4; font-size: 11px; padding: 3px 0; }
+
+/* ------------------------------------------- 白い欄（できごと・プレイヤー・詳細ログ）
+
+   紙のように白く抜く。中の作りは全部この 4 つの変数を見ているので、
+   変数だけ差し替えれば字も罫線も一緒に付いてくる。
+   ここに残るのは「変数を経由していない色」だけ。 */
+aside > div,
+#drawer {
+  --text: #0d1922;
+  --muted: #33475a;
+  --edge: #dde5eb;
+  --edge-hi: #c2ceda;
+  --amber: #8a5a04;
+  color: var(--text);
+  /* 白いが、向こうが透ける。
+     下地（海や盤）は暗いので、白を薄くするだけだと字が沈む。
+     backdrop-filter で下地そのものを一段明るく・彩度を落として敷き、
+     その上に白を .8 で重ねる ── 透けたまま字の下が明るいままになる */
+  background: rgba(255, 255, 255, .86);
+  backdrop-filter: blur(22px) saturate(.8) brightness(1.24);
+  border: 1px solid rgba(255, 255, 255, .72);
+  box-shadow: 0 14px 34px rgba(2, 14, 24, .28);
+}
+
+/* 白地の上のボタン。白い面に白い面を重ねても境目が見えない */
+aside > div button,
+#drawer button {
+  background: rgba(16, 34, 48, .06);
+  border-color: rgba(16, 34, 48, .16);
+}
+aside > div button:hover,
+#drawer button:hover { background: rgba(16, 34, 48, .11); color: var(--text); }
+aside > div ::-webkit-scrollbar-thumb,
+#drawer ::-webkit-scrollbar-thumb { background: #c6d2dd; }
+
+/* --- 変数を経由していない色を、白地向けに置き換える --- */
+.pl .left b { color: #16242f; }
+/* 手札が多い人の警告。白地では蛍光色より濃い赤の方が目に付く */
+.pl .stats b.over { color: #d02a16; text-shadow: none; }
+/* 数字だけ赤くしても目に入らない。札の絵ごと赤くする（白い抜きはそのまま） */
+.pl .stats span.over svg rect:first-of-type { fill: #d02a16; }
+.pl .left .none { color: #d02a16; }
+/* 手番でない人。字が読めなくなるところまでは落とさない（差は光り方が付ける） */
+.pl:not(.active) { opacity: .94; filter: saturate(.92); }
+/* ログの札。紋章は暗い地に置く前提の明るい色なので、白っぽい地だと消える。
+   減った＝濃い赤、増えた＝濃い緑と、地の方を濃く沈めて紋章を浮かせる */
+aside > div .chip.out, #drawer .chip.out {
+  background: #6d2114; color: #ffd9d0; border: 1px solid rgba(255, 138, 112, .5);
+}
+aside > div .chip.in, #drawer .chip.in {
+  background: #08423a; color: #c9f5ec; border: 1px solid rgba(79, 219, 195, .45);
+}
+aside > div .chip.none, #drawer .chip.none {
+  background: rgba(16, 34, 48, .1); color: var(--muted);
+}
+/* 紋章そのものも一回り大きく */
+aside > div .chip svg, #drawer .chip svg { width: 17px; height: 17px; }
+#log .devheld .dv,
+.pl .devheld .dv { color: #0a6c5d; background: rgba(69, 211, 192, .22); }
+.pl .tag { color: #08131a; }
+
+#dcols { background: rgba(16, 34, 48, .14); }
+.dcol { background: rgba(255, 255, 255, .32); }
+.dcolhead { background: color-mix(in srgb, var(--c) 22%, transparent); }
+.dbn { background: rgba(16, 34, 48, .07); color: var(--muted); }
+.dline + .dline { border-top: 1px solid rgba(16, 34, 48, .08); }
+.dempty { opacity: .55; }
+
+/* 白地の上の字は細いと沈む。太さと大きさを一段上げる */
+#loglines .line .txt { font-weight: 500; }
+#loglines .line:first-child .txt { font-weight: 700; }
+.dline { font-size: 11.5px; font-weight: 500; }
+.dcolhead { font-size: 11.5px; }
+h3 { font-size: 11px; letter-spacing: .16em; }
+.pl .name { font-size: 13.5px; font-weight: 700; }
+.pl .left { font-size: 11.5px; }
+.chip { font-weight: 700; }
+
+/* --- 白い欄の字の大きさ ---
+   盤から目を上げて読む場所なので、盤の上の UI より一回り大きく取る。
+   ここだけで完結させたいので、どの指定も白い欄の中に閉じてある */
+#log { font-size: 14px; }
+h3 { font-size: 12px; }
+button.mini { font-size: 11.5px; padding: 4px 11px; }
+aside > div .chip, #drawer .chip { font-size: 12px; padding: 1px 7px 1px 4px; gap: 2px; }
+
+.pl .name { font-size: 15px; }
+.pl .tag { font-size: 11px; padding: 2px 7px; }
+.pl .stats { gap: 13px; margin-top: 5px; }
+.pl .stats b { font-size: 21px; font-weight: 800; }
+.pl .left { font-size: 12.5px; gap: 12px; margin-top: 5px; }
+.pl .left .lb { font-size: 11px; }
+.pl .left b { font-size: 16px; font-weight: 800; }
+/* 点数はこの欄で一番先に読む数字。白地に濃い琥珀だと他の字に紛れるので、
+   鮮やかな黄色に黒の縁を回す。縁は字の**後ろ**に置く（paint-order）ので、
+   細らずに太いまま読める */
+.pl .vp {
+  font-size: 27px; color: #ffc21e;
+  -webkit-text-stroke: 2.6px #0c1218;
+  paint-order: stroke fill;
+  text-shadow: 0 1px 2px rgba(6, 14, 22, .3);
+}
+/* 単位まで縁取ると重い。ここは細いまま */
+.pl .vp i { font-size: 11px; -webkit-text-stroke: 0; text-shadow: none; color: var(--muted); }
+.pl .name { font-size: 13.5px; }
+.pl .mydev .dv { font-size: 11.5px; }
+
+#dround { font-size: 13.5px; }
+.dcolhead { font-size: 13px; }
+.dbn { font-size: 11px; }
+.dline { font-size: 13px; }
+.dempty { font-size: 12.5px; }
+#dround .now { color: #06231f; background: #21b8a4; }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--edge-hi); border-radius: 5px; }
+
+/* ---------------------------------------------------------------- 盤面 SVG */
+
+/* ヘクスの縁は黒だと重い。砂浜の色で明るく縁取る */
+.hex { stroke: #f0dcae; stroke-opacity: .62; stroke-width: 1.6; stroke-linejoin: round; }
+.numtext { font: 700 19px system-ui; text-anchor: middle; dominant-baseline: central; fill: #eaf2f8; }
+.numtext.red { fill: #ff6b5e; }
+.pip { fill: rgba(234,242,248,.55); }
+
+.road { stroke-linecap: round; }
+/* 盗賊の目。止まっている土地は遠目でも気づけるように、ゆっくり明滅させる */
+#robberwrap .eye { animation: eyeglow 2.6s ease-in-out infinite; }
+@keyframes eyeglow {
+  0%, 100% { opacity: .68; }
+  50% { opacity: 1; }
+}
+
+/* 押し入られた建物。揺れて赤く差す ── 渡す側とは向きが逆だと一目で分かるように */
+.robbedhit {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: robbedhit .44s ease-in-out;
+}
+@keyframes robbedhit {
+  0%, 100% { transform: translateX(0) rotate(0deg); filter: none; }
+  20%      { transform: translateX(-2.5px) rotate(-4deg); filter: brightness(1.5) saturate(2) hue-rotate(-12deg); }
+  45%      { transform: translateX(2.5px) rotate(4deg); filter: brightness(1.4) saturate(1.8); }
+  70%      { transform: translateX(-1.5px) rotate(-2deg); }
+}
+/* 受け取った建物。沈んでから弾む（押し込まれたのではなく、積まれた感じ） */
+.received {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: received .7s cubic-bezier(.25,1.3,.4,1);
+}
+@keyframes received {
+  0%   { transform: scale(1); }
+  25%  { transform: scale(1.04, .93); }
+  55%  { transform: scale(.98, 1.1); filter: brightness(1.3); }
+  100% { transform: scale(1); }
+}
+
+/* 独占の取り立てに回る一団。散らばらず固まって歩くので、動きも揃える */
+#board .march {
+  transform-box: fill-box; transform-origin: 50% 92%;
+  animation: march .34s ease-in-out var(--mdelay, 0s) infinite;
+}
+@keyframes march {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50%      { transform: translateY(-3.2px) rotate(3deg); }
+}
+/* 取り立てた袋。増えるたびに 1 つ跳ねて現れる */
+.loot .sack {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: sackpop .3s cubic-bezier(.2,1.5,.4,1) both;
+}
+@keyframes sackpop {
+  from { transform: translateY(-8px) scale(.3); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* 持ち場をゆっくり移る。
+   数字の札（中心・半径 21）に被ったまま止まっていると出目が読めなくなるので、
+   輪に沿って往復させて、必ずどこかで中心が空くようにする */
+#robberwrap .drift {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: banditDrift var(--wdur, 9s) ease-in-out var(--wdelay, 0s) infinite alternate;
+}
+@keyframes banditDrift {
+  from { transform: translate(0, 0); }
+  to   { transform: translate(var(--wx, 0), var(--wy, 0)); }
+}
+
+/* 盗賊は役ごとに別の動き。絵が違うので、動きも絵に合わせて別々に持つ。
+   足元を軸に傾けたいので fill-box を使う */
+#robberwrap .bandit { transform-box: fill-box; transform-origin: 50% 90%; }
+
+/* --- 突き役: 体ごと乗り出して、腕を 2 回突き出す --- */
+#robberwrap .bandit.jab {
+  animation: banditJab var(--dur, 4.6s) ease-in-out var(--delay, 0s) infinite;
+}
+@keyframes banditJab {
+  0%, 44%  { transform: translate(0, 0) rotate(0deg); }
+  52%      { transform: translate(var(--px, 0), var(--py, 0)) rotate(var(--tilt, 0deg)); }
+  60%      { transform: translate(0, 0) rotate(calc(var(--tilt, 0deg) * .25)); }
+  68%      { transform: translate(var(--px, 0), var(--py, 0)) rotate(var(--tilt, 0deg)); }
+  78%, 92% { transform: translate(0, 0) rotate(0deg); }
+  96%      { transform: translate(0, -1px) rotate(-2deg); }
+  100%     { transform: translate(0, 0) rotate(0deg); }
+}
+/* 腕は肩を軸に。体より少し先に出て、少し遅れて戻る */
+#robberwrap .bandit.jab .arm {
+  transform-box: fill-box; transform-origin: 5% 55%;
+  animation: banditArm var(--dur, 4.6s) ease-in-out var(--delay, 0s) infinite;
+}
+@keyframes banditArm {
+  0%, 42%  { transform: rotate(10deg) translate(0, 0); }
+  51%      { transform: rotate(-16deg) translate(4.5px, 0); }
+  59%      { transform: rotate(8deg) translate(0, 0); }
+  67%      { transform: rotate(-16deg) translate(4.5px, 0); }
+  76%, 100% { transform: rotate(10deg) translate(0, 0); }
+}
+
+/* --- 寝役: 息をしているだけ。時々 z が浮かぶ --- */
+#robberwrap .bandit.sleep {
+  animation: banditSleep var(--dur, 5.6s) ease-in-out var(--delay, 0s) infinite;
+}
+@keyframes banditSleep {
+  0%, 100% { transform: translate(0, 0) scale(1, 1); }
+  50%      { transform: translate(0, .7px) scale(1.035, .965); }
+}
+#robberwrap .zzz text {
+  transform-box: fill-box; transform-origin: 50% 50%;
+  animation: zzz 3.6s ease-out infinite;
+}
+@keyframes zzz {
+  0%   { opacity: 0; transform: translate(0, 0) scale(.6); }
+  20%  { opacity: .9; }
+  100% { opacity: 0; transform: translate(5px, -13px) scale(1.15); }
+}
+/* 寝ている目は光らない */
+#robberwrap .bandit.sleep .eye { animation: none; }
+
+/* --- 見張り役: 左右をゆっくり見る --- */
+#robberwrap .bandit.look {
+  animation: banditLook var(--dur, 7.2s) ease-in-out var(--delay, 0s) infinite;
+}
+@keyframes banditLook {
+  0%, 100% { transform: rotate(0deg); }
+  18%      { transform: rotate(-7deg); }
+  46%      { transform: rotate(0deg); }
+  72%      { transform: rotate(7deg); }
+}
+
+/* 最初の砂漠は「野営」の絵。動く一団ではないので、中の動きは全部止める
+   （寝役の z も、目の明滅も。何も起きていないのに一番目立つ物にしない） */
+#robbercamp, #robbercamp * { animation: none !important; }
+
+/* --- 攻められている間 --- */
+/* 悠長にふらついている場合ではない。役ごとに慌て方を変える */
+#robberwrap.besieged .bandit.jab {
+  animation: banditPanicJab .9s ease-in-out infinite;
+}
+@keyframes banditPanicJab {
+  0%, 100% { transform: translate(0, 0) rotate(-6deg); }
+  30%      { transform: translate(var(--px, 0), var(--py, 0)) rotate(var(--tilt, 0deg)); }
+  55%      { transform: translate(0, -1.5px) rotate(-9deg); }
+  78%      { transform: translate(var(--px, 0), var(--py, 0)) rotate(var(--tilt, 0deg)); }
+}
+/* 寝ていた 1 人は飛び起きる */
+#robberwrap.besieged .bandit.sleep { animation: banditWake .42s ease-in-out infinite; }
+@keyframes banditWake {
+  0%, 100% { transform: translate(0, 0) rotate(0deg) scale(1, 1); }
+  35%      { transform: translate(-1.5px, -3px) rotate(-7deg) scale(.97, 1.06); }
+  70%      { transform: translate(1.5px, -1px) rotate(5deg) scale(1.03, .98); }
+}
+#robberwrap.besieged .zzz { opacity: 0; }
+/* 見張りは身構える */
+#robberwrap.besieged .bandit.look { animation: banditBrace .55s ease-in-out infinite; }
+@keyframes banditBrace {
+  0%, 100% { transform: translate(0, 0) rotate(-4deg); }
+  50%      { transform: translate(-1.8px, -1.2px) rotate(6deg); }
+}
+
+/* --- 追い出されて逃げる（騎士） --- */
+#robberwrap.fleeing .bandit { animation: banditFlee .22s linear infinite !important; }
+@keyframes banditFlee {
+  0%, 100% { transform: translate(0, 0) rotate(-11deg); }
+  50%      { transform: translate(0, -3px) rotate(-16deg); }
+}
+#robberwrap.fleeing .zzz { opacity: 0; }
+/* 汗。滴ごとに向き（--sx）と出る間をずらして、粒が揃わないようにする */
+#robberwrap .sweat > * { opacity: 0; transform-box: fill-box; transform-origin: 50% 50%; }
+#robberwrap.fleeing .sweat > * { animation: sweat .52s ease-out infinite; }
+@keyframes sweat {
+  0%   { opacity: 0; transform: translate(0, 0) scale(.4); }
+  22%  { opacity: .95; }
+  100% { opacity: 0; transform: translate(var(--sx, 6px), -11px) scale(1.15); }
+}
+
+/* --- 7 が出て動く（誰にも追われていない） --- */
+/* 次の獲物へ向かうところ。フードの闇に笑みが浮かび、弾むように歩く */
+#robberwrap.eager .bandit { animation: banditSwagger .46s ease-in-out infinite !important; }
+@keyframes banditSwagger {
+  0%, 100% { transform: translate(0, 0) rotate(4deg); }
+  50%      { transform: translate(0, -3.5px) rotate(-3deg); }
+}
+#robberwrap .grin { opacity: 0; }
+#robberwrap.eager .grin { opacity: 1; }
+/* 目は細める。にやりとした顔になる */
+#robberwrap.eager .eye {
+  transform-box: fill-box; transform-origin: 50% 50%;
+  transform: scaleY(.5); animation: none;
+}
+#robberwrap.eager .zzz { opacity: 0; }
+
+/* --- 騎士 --- */
+.knight .sword { transform-box: fill-box; transform-origin: 18% 82%; }
+.knight.fighting .sword { animation: swing .42s ease-in-out infinite; }
+@keyframes swing {
+  0%, 100% { transform: rotate(0deg); }
+  35%      { transform: rotate(-62deg); }
+  62%      { transform: rotate(14deg); }
+}
+.knight.fighting { transform-box: fill-box; transform-origin: 50% 100%; }
+
+/* --- 大砲 --- */
+.cannon .barrel { transform-box: fill-box; transform-origin: 0% 50%; }
+.cannon.fire .barrel { animation: recoil .34s cubic-bezier(.2,1.4,.4,1); }
+@keyframes recoil {
+  0%   { transform: translateX(0); }
+  22%  { transform: translateX(-7px); }
+  100% { transform: translateX(0); }
+}
+
+/* 騎士に押しのけられた時だけは、めいめいの動きを止めて一斉に跳ねる */
+#robberwrap.shoved * { animation-play-state: paused; }
+.piece { filter: url(#pieceShadow); }
+
+.port-line { stroke: rgba(150,200,230,.5); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 7 6; }
+.porttext { font: 700 11.5px system-ui; text-anchor: middle; dominant-baseline: central; fill: #eaf2f8; letter-spacing: .04em; }
+.portg { pointer-events: none; }
+
+.spot { fill: rgba(69,211,192,.9); stroke: #eafffb; stroke-width: 2.5; cursor: pointer; }
+.spot:hover { fill: #b6fff2; stroke-width: 3; }
+.spot.faint { fill: rgba(69,211,192,.4); stroke: rgba(234,255,251,.65); stroke-width: 1.8; }
+.spot.faint:hover { fill: #b6fff2; stroke: #eafffb; stroke-width: 3; }
+.spot-edge { stroke: rgba(69,211,192,.85); stroke-width: 11; stroke-linecap: round; cursor: pointer; }
+.spot-edge:hover { stroke: #b6fff2; }
+/* 盗賊を置ける場所。ヘクスは薄く敷くだけで、目印は数字チップの輪 */
+.tilehint { cursor: pointer; }
+.spot-tile {
+  fill: rgba(120,240,220,.07); pointer-events: all;
+  stroke: rgba(120,240,220,.3); stroke-width: 2; stroke-linejoin: round;
+}
+/* 明るいヘクスでも暗いヘクスでも同じ強さに見えるよう、暗い縁を下に敷く */
+.spot-token-bg {
+  fill: none; stroke: rgba(2,10,16,.55); stroke-width: 7; pointer-events: none;
+}
+.spot-token {
+  fill: none; stroke: #7ef7e2; stroke-width: 3.2; pointer-events: none;
+  filter: drop-shadow(0 0 5px rgba(126,247,226,.8));
+}
+/* 18 か所が一斉に脈打つと、盤全体がちらついて「まばら」に見える。
+   点滅はさせず、狙っている 1 か所だけをマウスで強調する */
+.tilehint:hover .spot-token { stroke: #ffffff; stroke-width: 4; }
+.tilehint:hover .spot-tile { fill: rgba(120,240,220,.28); stroke: #d6fff7; stroke-width: 3; }
+.pulse { animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+
+.pop { animation: pop .34s cubic-bezier(.2,1.5,.4,1); transform-box: fill-box; transform-origin: center; }
+
+/* 道は拠点のある側から**敷いていく**。
+   横に引き伸ばすと枕木まで一緒に伸びて「板が伸びた」ように見えるので、
+   出来上がりの絵を端から順に見せる。steps を噛ませると 1 枚ずつ置く手つきになる。
+   いつ敷き始めるか（＝作業員が着く時刻）は JS が animation-delay で入れる */
+.roadgrow {
+  transform-box: fill-box;
+  animation-duration: .64s; animation-fill-mode: both; animation-timing-function: steps(9, end);
+}
+.roadgrow.from1 { animation-name: roadlay1; }
+.roadgrow.from2 { animation-name: roadlay2; }
+@keyframes roadlay1 {
+  from { clip-path: inset(-40% 100% -40% -20%); }
+  to   { clip-path: inset(-40% -20% -40% -20%); }
+}
+@keyframes roadlay2 {
+  from { clip-path: inset(-40% -20% -40% 100%); }
+  to   { clip-path: inset(-40% -20% -40% -20%); }
+}
+
+/* --- 作業員 --- */
+/* 歩いている間は足を振り、着いたらハンマーを振る */
+.worker .legs {
+  transform-box: fill-box; transform-origin: 50% 0%;
+  animation: walkleg .3s ease-in-out infinite;
+}
+@keyframes walkleg {
+  0%, 100% { transform: skewX(0deg); }
+  25%      { transform: skewX(13deg); }
+  75%      { transform: skewX(-13deg); }
+}
+.worker .hammer { transform-box: fill-box; transform-origin: 10% 88%; }
+.worker.laying .legs { animation: none; }
+.worker.laying .hammer { animation: hammer .34s ease-in-out infinite; }
+@keyframes hammer {
+  0%, 100% { transform: rotate(0deg); }
+  40%      { transform: rotate(-54deg); }
+  70%      { transform: rotate(9deg); }
+}
+
+/* --- 開拓地: 地面からせり上がる --- */
+/* 「ズズズ」を出したいので、上がりきるまで左右に細かく震わせる */
+/* 作業員が着いて土煙が上がってから現れる。煙より先に建つと「後から煙が出た」に見える */
+.piece.rise { transform-box: fill-box; transform-origin: 50% 100%; animation: rise .68s ease-out .46s both; }
+@keyframes rise {
+  0%   { transform: translate(0, 15px) scaleY(.55); opacity: 0; }
+  18%  { opacity: 1; }
+  30%  { transform: translate(.9px, 9px) scaleY(.78); }
+  45%  { transform: translate(-.9px, 5.5px) scaleY(.88); }
+  60%  { transform: translate(.7px, 2.6px) scaleY(.96); }
+  75%  { transform: translate(-.5px, .6px) scaleY(1.04); }
+  88%  { transform: translate(.3px, -1px) scaleY(1.02); }
+  100% { transform: translate(0, 0) scaleY(1); }
+}
+
+/* --- 都市: 足場が組まれ、外れると出来上がっている --- */
+.scaffold {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: scaffoldUp .34s cubic-bezier(.2,.9,.3,1) both;
+}
+@keyframes scaffoldUp {
+  0%   { transform: translateY(6px) scaleY(.1); opacity: 0; }
+  60%  { opacity: 1; }
+  100% { transform: translateY(0) scaleY(1); opacity: 1; }
+}
+/* 用が済んだら下へ抜けて消える */
+.scaffold.off { animation: scaffoldDown .4s ease-in both; }
+@keyframes scaffoldDown {
+  0%   { transform: translateY(0) scaleY(1); opacity: 1; }
+  100% { transform: translateY(7px) scaleY(.15); opacity: 0; }
+}
+/* 都市そのものは足場が組み終わってから現れる */
+.piece.grow { transform-box: fill-box; transform-origin: 50% 100%; animation: grow .5s ease-out .38s both; }
+@keyframes grow {
+  0%   { transform: translateY(3px) scale(.55); opacity: .2; }
+  40%  { transform: translateY(0) scale(1.12); opacity: 1; }
+  62%  { transform: scale(.96); }
+  80%  { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
+@keyframes pop { from { transform: scale(.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+#robberwrap.shoved { animation: shove .6s cubic-bezier(.3,1.4,.5,1); }
+@keyframes shove {
+  0% { transform: translate(0,0) rotate(0); }
+  25% { transform: translate(14px,-10px) rotate(16deg); }
+  60% { transform: translate(-5px,3px) rotate(-7deg); }
+  100% { transform: translate(0,0) rotate(0); }
+}
+.puff { animation: puff .65s ease-out forwards; transform-box: fill-box; transform-origin: center; }
+@keyframes puff {
+  from { transform: scale(.4); opacity: .9; }
+  to { transform: scale(1.7) translateY(-8px); opacity: 0; }
+}
+/* 海のゆらぎ */
+.caustic { animation: drift 26s ease-in-out infinite alternate; }
+.caustic:nth-child(2) { animation-duration: 34s; animation-direction: alternate-reverse; }
+@keyframes drift { from { transform: translate(-18px, 10px) scale(1); } to { transform: translate(22px, -14px) scale(1.08); } }
+
+.win {
+  text-align: center; padding: 12px 0;
+  font-size: 18px; font-weight: 700; color: var(--amber);
+  text-shadow: 0 0 24px rgba(242,181,68,.35);
+}

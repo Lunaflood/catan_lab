@@ -1,0 +1,13 @@
+[package]
+name = "catan-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "カタン基本セットのルールエンジン。外部依存ゼロ・決定的・高速。"
+
+# 外部依存を持たない。理由:
+#  - WASM で getrandom のフィーチャ地獄を踏まない
+#  - 探索から毎秒数十万回叩かれるので、こちらで完全に制御したい
+[dependencies]
+
+[dev-dependencies]

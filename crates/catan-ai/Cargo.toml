@@ -1,0 +1,9 @@
+[package]
+name = "catan-ai"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "カタンのボットと、ボット同士を戦わせる評価ハーネス。"
+
+[dependencies]
+catan-core = { path = "../catan-core" }
