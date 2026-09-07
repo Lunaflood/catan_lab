@@ -59,7 +59,43 @@
   } catch (e) {
     say("✗ wasm を動かせない: " + e);
   }
-  say("--- ここまで出ていれば、本体も動くはずです ---");
+  say("--- 読み込みはここまで全部通った ---");
+
+  // ここから先は「実際に本体を描かせて、何が出ているか」を見る。
+  // 同じ場所のページなので、中身をそのまま調べられる
+  say("本体を埋め込んで確認中…");
+  const fr = document.createElement("iframe");
+  fr.src = "index.html?probe=" + Date.now();
+  fr.style.cssText = "width:100%;height:320px;border:2px solid #9ab;border-radius:10px;margin-top:12px";
+  document.body.appendChild(fr);
+
+  fr.addEventListener("load", async () => {
+    await new Promise((r) => setTimeout(r, 3500));
+    try {
+      const d = fr.contentDocument;
+      const w = fr.contentWindow;
+      const home = d.getElementById("home");
+      const app = d.getElementById("app");
+      const card = d.querySelector("#home .hcard");
+      const cs = (el) => (el ? w.getComputedStyle(el) : null);
+      const box = (el) => {
+        if (!el) return "無し";
+        const r = el.getBoundingClientRect();
+        return Math.round(r.width) + "×" + Math.round(r.height) + " @" + Math.round(r.x) + "," + Math.round(r.y);
+      };
+      say("── 本体の中の様子 ──");
+      say("  #home : " + (home ? "ある" : "✗ 無い") + " / hidden=" + (home ? home.hidden : "-") +
+          " / " + box(home));
+      say("  card  : " + box(card) + " / 背景=" + (cs(card) ? cs(card).backgroundColor : "-"));
+      say("  #app  : " + (app ? "ある" : "✗ 無い") + " / hidden=" + (app ? app.hidden : "-"));
+      say("  body背景: " + w.getComputedStyle(d.body).backgroundColor);
+      say("  bodyの中身: " + (d.body.innerText || "").replace(/\s+/g, " ").slice(0, 70));
+      say("  読み込んだ JS: " + [...d.scripts].map((x) => x.getAttribute("src")).join(", "));
+      say("  版: " + (d.getElementById("hnote") ? d.getElementById("hnote").textContent : "(出ていない)"));
+    } catch (e) {
+      say("✗ 中を見られない: " + e);
+    }
+  });
 </script>
 </body>
 </html>
