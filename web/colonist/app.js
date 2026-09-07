@@ -1931,14 +1931,27 @@ function devGlyph(size) {
  *   向こうは残数を隠す設定にしてもカードの重なりだけは残していた）。
  *   残り割合に比例して、カードの後ろへ最大 7 層まで重なりを敷く。
  */
+/** 銀行の 1 種類ぶんを何枚の札で表すか。19 枚を 4 分割 ＝ 1 枚あたり約 5 枚ぶん */
+const BANK_STACK = 4;
+
+/**
+ * 銀行の残り。**少しずらして重ねた札が、減ると 1 枚ずつ無くなる**。
+ *
+ * 前は影の厚みで表していたが、厚みは「少し減った」と「半分減った」の区別が付かない。
+ * 札の枚数なら、離れて見ても何枚残っているか数えられる。
+ * 数字は出さない ── 正確な残数は本来伏せておく物で、
+ * 「そろそろ尽きる」が分かれば足りる。
+ */
 function bpCard(res, n, max, inner, tip) {
-  const layers = Math.max(0, Math.min(7, Math.round((n / max) * 7)));
-  const edge = (TERRAIN[res] && TERRAIN[res].dark) || "#3b2a63";
-  const shadow = Array.from({ length: layers }, (_, k) =>
-    `${-(k + 1) * 2}px ${-(k + 1) * 2}px 0 ${edge}`).join(", ");
-  // 枚数の数字は出さない。**厚みだけで「だいたいどれくらい残っているか」**を伝える
-  return `<div class="bpcard ${res}${n === 0 ? " empty" : ""}" data-res="${res}" title="${tip}"
-               style="${shadow ? `box-shadow:${shadow};` : ""}">${inner}</div>`;
+  // 1 枚でも残っていれば札は 1 枚出す（0 枚と「わずか」を見分けるため）
+  const shown = n <= 0 ? 0 : Math.max(1, Math.ceil((n / max) * BANK_STACK));
+  // 地色は 1 枚ずつが持つ。まとめ役の箱に色を付けると、後ろに大きな板が見えてしまう
+  const cards = Array.from({ length: Math.max(1, shown) }, (_, k) =>
+    `<i class="bps ${res}" style="--k:${k}"></i>`).join("");
+  return `<div class="bpstack${n === 0 ? " empty" : ""}" data-res="${res}"
+               title="${tip}　残り ${n}／${max}" style="--n:${shown}">
+    ${cards}<div class="bpcard ${res}" data-res="${res}">${inner}</div>
+  </div>`;
 }
 
 function renderBankPanel() {
@@ -2126,7 +2139,11 @@ function renderPlayers() {
           ? "提案を自動で断っています（押すと解除）" : "押すと、この相手の提案を自動で断ります"}">
         <div class="vp" title="${vpTip}">${vpNum}<i>pt</i></div>
         <div class="name">${escapeHtml(nameOf(p.id))}</div>
-        <div class="me">${p.id === mySeat ? "あなた" : isHumanSeat(p) ? "" : "CPU"}</div>
+        <div class="me">${
+          p.id === mySeat ? "あなた"
+          : isHumanSeat(p) ? ""
+          // 名前が席ごとの固有名になったので、強さはここに小さく添える
+          : seatLevel[p.id] != null ? `CPU・${LEVEL_NAMES[seatLevel[p.id]]}` : "CPU"}</div>
       </div>
       <div class="pinfo">
         ${tags.length ? `<div class="ptags">${tags.join("")}</div>` : ""}
@@ -3187,6 +3204,15 @@ function renderActions() {
   renderOffers();
   renderPanel(abx);
   abx.hidden = !abx.innerHTML;
+  // ★ 出す場所は用事で変える。
+  //   ・**手札を選ぶ**もの（捨て札・交易）は**手札の真上**。
+  //     視線と指が手札にあるので、反対側の端に出すと往復させることになる。
+  //   ・押したボタンの確認（街道・発展カードなど）は**そのボタンの真上**。
+  const overHand =
+    state.prompt === "DISCARD" ||
+    openMenu === "OFFER_TRADE" || openMenu === "MARITIME_TRADE" ||
+    (state.prompt === "DECIDE_TRADE" && answerMode);
+  abx.classList.toggle("over-hand", overHand);
 }
 
 /** 対案を組んでいる最中か。押されるまでは小さいカードだけ出す */
@@ -3599,12 +3625,31 @@ function flowHtml(e) {
  *   [丸いアバター 22px] [名前＝その人の色・太字] 本文（黒）＋ 資源はカードの絵
  * ★ 自分の行動だけ「あなた」と二人称で書く。誰の話かを読み取らせない。
  */
+/**
+ * 文中の `P2` のような席の指し示しを、**その席の色の付いた名前**に置き換える。
+ *
+ * エンジンは席番号しか知らないので、文面には `P2` としか書けない。
+ * そのまま出すと「P2 と交易が成立」となり、誰のことか読めない。
+ * ここで名前に直し、色も付ける ── ログは色で人を追う場所なので、
+ * 主語だけ色が付いていて文中の相手が素の字だと、視線が繋がらない。
+ *
+ * ⚠ 置換の前に必ず `escapeHtml` を通すこと（文面には名前が入る）。
+ */
+function withNames(text) {
+  return escapeHtml(text).replace(/P(\d)/g, (m, d) => {
+    const pid = +d;
+    if (pid >= (state.players ? state.players.length : 4)) return m;
+    const who = pid === mySeat ? "あなた" : nameOf(pid);
+    return `<b class="pname-in" style="color:${PLAYER_INK[pid]}">${escapeHtml(who)}</b>`;
+  });
+}
+
 function logLine(e) {
   const mine = e.actor === mySeat;
   const who = mine ? "あなた" : nameOf(e.actor);
   return `<div class="line">
     <span class="who" style="background:${PLAYER_INK[e.actor]}"></span>
-    <span class="txt"><b style="color:${PLAYER_INK[e.actor]}">${escapeHtml(who)}</b> ${escapeHtml(e.text)}${flowHtml(e)}</span></div>`;
+    <span class="txt"><b style="color:${PLAYER_INK[e.actor]}">${escapeHtml(who)}</b> ${withNames(e.text)}${flowHtml(e)}</span></div>`;
 }
 
 function renderLog() {
@@ -3682,7 +3727,7 @@ function renderDrawer() {
         ? lines
             .slice()
             .reverse()
-            .map((e) => `<div class="dline">${escapeHtml(e.text)}${flowHtml(e)}</div>`)
+            .map((e) => `<div class="dline">${withNames(e.text)}${flowHtml(e)}</div>`)
             .join("")
         : `<div class="dempty">—</div>`;
       return `<div class="dcol" style="--c:${PLAYER_INK[p.id]}">
@@ -4093,7 +4138,7 @@ function netHandle(m) {
         if (app) app.hidden = false;
         newGame(false, {
           seeds: m.seeds, players: m.players, seat: m.yourSeat,
-          names: m.names, humans: m.humans || [],
+          names: m.names, humans: m.humans || [], levels: m.levels || [],
         });
         break;
       }
@@ -4164,11 +4209,20 @@ let lobby = {
 };
 
 const LEVEL_NAMES = ["やさしい", "ふつう", "つよい", "さいきょう"];
+/**
+ * CPU の名前。**席ごとに固定**なので、同じ強さを並べても呼び分けられる。
+ * 強さをそのまま名前にしていた頃は 4 人中 3 人が「さいきょう」で、
+ * ログを読むのに色を見比べるしかなかった。強さは席の欄に小さく添える。
+ * サーバ側（`catan-server`）にも同じ並びを持たせて、オンラインでも同じ名前にする。
+ */
+const CPU_NAMES = ["カイ", "ミナ", "レン", "ソラ"];
 
 /** 席 → 表示名。対局が始まると席の並びが決まるので、そこで作る */
 let seatNames = [];
 /** 席 → 人かどうか。手元のエンジンは「自分だけが人」なので、表示はこちらで持つ */
 let seatHuman = [];
+/** 席 → CPU の強さ（人の席は undefined）。名前とは別に小さく添える */
+let seatLevel = [];
 
 function nameOf(pid) {
   return seatNames[pid] || `P${pid}`;
@@ -4475,11 +4529,14 @@ function newGame(newSeed, online) {
   // 参加者を席に配る。人間は上で決めた席、CPU は残りへ順に。
   // 名前と強さはここで席の並びに写す（以降の描画は席番号だけを見る）
   seatNames = new Array(players);
+  seatLevel = new Array(players);
   let levels = 0;
   if (online) {
     // 名前はサーバが配る。CPU を動かすのもサーバなので、こちらにボットは要らない
     seatNames = online.names.slice();
     seatHuman = online.humans.slice();
+    // 強さは名前とは別に持つ（名前は席ごとの固有名になったので、字面から強さが読めない）
+    seatLevel = (online.levels || []).map((l) => (l < 0 ? undefined : l));
   } else {
     seatHuman = [];
     const cpus = lobby.members.filter((m) => m.kind === "cpu");
@@ -4490,7 +4547,8 @@ function newGame(newSeed, online) {
         continue;
       }
       const m = cpus[ci++] || { level: 1 };
-      seatNames[seat] = LEVEL_NAMES[m.level];
+      seatNames[seat] = CPU_NAMES[seat] || `CPU ${seat}`;
+      seatLevel[seat] = m.level;
       levels |= (m.level & 0b11) << (seat * 2);
     }
   }
@@ -4499,9 +4557,15 @@ function newGame(newSeed, online) {
   }
 
   clearDraft();
+  // 🔴 2 つのマスクは別物。
+  //   手札を見せてよい席 = 自分だけ / 交渉で最後に聞く席 = 卓で共通
+  // 後者がずれると `to_act` がサーバと食い違って進行不能になる
+  const askLast = online
+    ? online.humans.reduce((m, h, s) => m | (h ? 1 << s : 0), 0)
+    : watching ? 0 : 1 << mySeat;
   wasm.game_new(
     boardSeed, diceSeed, devSeed, stealSeed, players,
-    watching ? 0 : 1 << mySeat, levels
+    watching ? 0 : 1 << mySeat, levels, askLast
   );
   board = readJson(wasm.board_json());
   refreshState();

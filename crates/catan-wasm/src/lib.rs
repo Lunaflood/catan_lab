@@ -107,6 +107,14 @@ fn apply_notify(sess: &mut Session, a: Action) -> catan_core::action::ActionReco
 }
 
 /// 新しい対局を始める。`humans_mask` はビットで人間の席を指定（bit0 = 席0）。
+///
+/// 🔴 `humans_mask` と `ask_last_mask` は**別物**なので混ぜてはいけない。
+///
+/// - `humans_mask` = **手札の中身を見せてよい席**。オンラインでは自分の席だけ。
+///   ここに他人を入れると、相手の手札が覗ける。
+/// - `ask_last_mask` = **交渉で最後に聞く席**。規則の一部なので、
+///   卓に着く全員（サーバを含む）で**同じ値**でなければならない。
+///   ずれると `to_act` が食い違い、盤面がサーバとずれて進行不能になる。
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
 pub extern "C" fn game_new(
@@ -118,6 +126,7 @@ pub extern "C" fn game_new(
     humans_mask: u32,
     // levels: 席ごとの強さ。1 席 2 ビット（0=やさしい / 1=ふつう / 2=つよい / 3=さいきょう）
     levels: u32,
+    ask_last_mask: u32,
 ) {
     let cfg = GameConfig {
         // ブラウザでは実時間。UI が tick で流し込む
@@ -129,7 +138,11 @@ pub extern "C" fn game_new(
         // 提案の諾否は、**人間を最後に**聞く。
         // CPU は即答するので、人間が答える時点で他全員の返事が出そろっている
         // ＝ 一斉に聞かれたのと同じ見え方になる（colonist と同じ手触り）。
-        answer_last_mask: humans_mask as u8,
+        //
+        // 🔴 ここに `humans_mask`（＝自分の席だけ）を入れてはいけない。
+        // オンラインでは席ごとに値が変わってしまい、サーバとも食い違って
+        // `to_act` がずれる。呼ぶ側が卓で共通の値を渡す。
+        answer_last_mask: ask_last_mask as u8,
         ..GameConfig::default()
     };
     let n = players.clamp(3, 4) as u8;

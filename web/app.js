@@ -3505,7 +3505,7 @@ function netHandle(m) {
         if (app) app.hidden = false;
         newGame(false, {
           seeds: m.seeds, players: m.players, seat: m.yourSeat,
-          names: m.names, humans: m.humans || [],
+          names: m.names, humans: m.humans || [], levels: m.levels || [],
         });
         break;
       }
@@ -3891,9 +3891,15 @@ function newGame(newSeed, online) {
   }
 
   clearDraft();
+  // 🔴 2 つのマスクは別物。
+  //   手札を見せてよい席 = 自分だけ / 交渉で最後に聞く席 = 卓で共通
+  // 後者がずれると `to_act` がサーバと食い違って進行不能になる
+  const askLast = online
+    ? online.humans.reduce((m, h, s) => m | (h ? 1 << s : 0), 0)
+    : watching ? 0 : 1 << mySeat;
   wasm.game_new(
     boardSeed, diceSeed, devSeed, stealSeed, players,
-    watching ? 0 : 1 << mySeat, levels
+    watching ? 0 : 1 << mySeat, levels, askLast
   );
   board = readJson(wasm.board_json());
   refreshState();

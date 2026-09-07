@@ -264,6 +264,13 @@ impl Room {
         let mut cfg = GameConfig::default();
         cfg.turn_clock = TurnClock::PerAction { ms: 500 };
         cfg.turn_time_limit_ms = None;
+        // 🔴 **端末と同じ値でなければならない**。
+        // 交渉で誰から順に聞くかは規則の一部なので、ここがずれると
+        // `to_act` がサーバと端末で食い違い、盤面がずれて進行不能になる。
+        // 端末側は `game_new` の `ask_last_mask` に同じ物を渡す
+        cfg.answer_last_mask = (0..players)
+            .filter(|&s| self.seat_member[s].is_some())
+            .fold(0u8, |m, s| m | (1 << s));
         let game = Game::with_streams(
             players as u8,
             seeds[0] as u64,
@@ -275,12 +282,15 @@ impl Room {
 
         // CPU は席ごとに用意する。強さは待機所で選ばれたものを順に当てる
         let mut ci = 0usize;
+        // 席ごとの強さ。人の席は -1。端末が名前の脇に小さく添えるので配る
+        let mut seat_levels: Vec<i32> = vec![-1; players];
         self.bots = (0..players)
             .map(|seat| {
                 if self.seat_member[seat].is_some() {
                     None
                 } else {
                     let lv = *self.cpus.get(ci).unwrap_or(&1);
+                    seat_levels[seat] = lv as i32;
                     ci += 1;
                     // CPU へ本番の乱数の種を渡さない。
                     Some(bot_for_level(lv, 0xC47A_2026 + seat as u64))
@@ -295,14 +305,16 @@ impl Room {
         self.again.clear();
         self.bot_at = now_ms() + 700;
 
-        // 席ごとに「自分の席」が違うので、1 人ずつ別の内容を送る
+        // 席ごとに「自分の席」が違うので、1 人ずつ別の内容を送る。
+        //
+        // CPU には**席ごとの名前**を付ける。強さをそのまま名前にすると
+        // 4 人中 3 人が「さいきょう」になり、ログで色を見比べないと呼び分けられない。
+        // 端末側（web/colonist/app.js の `CPU_NAMES`）と同じ並びにすること
+        const CPU_NAMES: [&str; MAX_PLAYERS] = ["カイ", "ミナ", "レン", "ソラ"];
         let names: Vec<String> = (0..players)
             .map(|seat| match self.seat_member[seat] {
                 Some(mi) => crate::http::esc(&self.members[mi].name),
-                None => {
-                    let lv = self.bots[seat].as_ref().map(|b| b.name()).unwrap_or_default();
-                    crate::http::esc(&lv)
-                }
+                None => CPU_NAMES[seat.min(MAX_PLAYERS - 1)].to_string(),
             })
             .collect();
         let names_json = names
@@ -316,6 +328,11 @@ impl Room {
             .map(|seat| if self.seat_member[seat].is_some() { "true" } else { "false" })
             .collect::<Vec<_>>()
             .join(",");
+        let levels_json = seat_levels
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
 
         let mut msgs = Vec::new();
         for (mi, m) in self.members.iter().enumerate() {
@@ -324,8 +341,9 @@ impl Room {
                 mi,
                 format!(
                     "{{\"t\":\"start\",\"seeds\":[{},{},{},{}],\"players\":{},\
-                     \"yourSeat\":{},\"names\":[{}],\"humans\":[{}]}}",
-                    seeds[0], seeds[1], seeds[2], seeds[3], players, seat, names_json, humans_json
+                     \"yourSeat\":{},\"names\":[{}],\"humans\":[{}],\"levels\":[{}]}}",
+                    seeds[0], seeds[1], seeds[2], seeds[3], players, seat, names_json, humans_json,
+                    levels_json
                 ),
             ));
         }

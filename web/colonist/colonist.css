@@ -988,3 +988,68 @@ header { display: none !important; }
   /* 貼り付いた時に下の行が透けないよう、地色を敷く */
   box-shadow: 0 8px 20px rgba(255,171,46,.3), 0 -14px 16px 10px rgba(255,255,255,.92);
 }
+
+/* 文中に出てくる相手の名前。主語の名前と同じ見え方に揃える
+   （ログは色で人を追う場所なので、文中だけ素の字だと視線が切れる） */
+#app .pname-in { font-weight: 700; }
+
+/* ---------------------------------------------------------------- 銀行の残り
+   影の厚みではなく、**少しずらして重ねた札の枚数**で残りを見せる。
+   厚みは「少し減った」と「半分減った」の区別が付かないが、
+   枚数なら離れて見ても数えられる。 */
+#app #bankpanel { align-items: flex-end; }
+#app #bankpanel .bpstack {
+  position: relative; flex: 0 0 auto;
+  /* 重なりの分だけ場所を空ける（--n は出ている札の枚数） */
+  width: calc(40px + (var(--n) - 1) * 5px);
+  height: calc(54px + (var(--n) - 1) * 5px);
+}
+#app #bankpanel .bpstack.empty { opacity: .28; }
+/* 後ろに重なる札。手前ほど下・右に来る */
+#app #bankpanel .bps {
+  position: absolute; display: block;
+  width: 40px; height: 54px; border-radius: 4px;
+  left: calc((var(--n) - 1 - var(--k)) * 5px);
+  top:  calc((var(--n) - 1 - var(--k)) * 5px);
+  border: 1px solid rgba(255,255,255,.22);
+  box-shadow: 0 1px 3px rgba(0,0,0,.35);
+}
+/* 一番手前の 1 枚だけが絵を持つ */
+#app #bankpanel .bpstack .bpcard {
+  position: absolute; left: 0; top: 0; margin: 0;
+  width: 40px; height: 54px;
+}
+#app #bankpanel .bpstack.empty .bpcard { filter: grayscale(1); }
+
+/* 手札を選ぶ場面（捨て札・交易）は、パネルを**手札の真上**に出す。
+   視線と指が手札にあるので、画面の反対側に出すと往復させることになる。
+   押したボタンの確認は右下のまま（そちらは指がボタンにある）。 */
+#app #actionbox.over-hand {
+  left: 12px !important;
+  right: auto !important;
+}
+
+/* ---------------------------------------------------------------- 記号ボタンの中身を真ん中へ
+   ✓ ✗ ✎ のような**字で描いた記号**は、箱の中で baseline に乗るので下にずれる。
+   日本語のフォントは記号の下に余白を多く取るため、見た目はさらに下がる。
+   grid で中央に置き、行の高さを 1 に固定して、字の分の余白を出さない。 */
+#app #offers .oc-b,
+#app #actionbox .dc-no, #app #actionbox .dc-yes,
+#app #actionbox .tc-ok, #app #actionbox .tc-cancel,
+#app #actionbox .abx-ok {
+  display: grid !important;
+  place-items: center !important;
+  line-height: 1 !important;
+  text-align: center;
+  font-family: "Segoe UI Symbol", "Segoe UI", system-ui, sans-serif;
+}
+/* 中身が字でも絵でも、同じ 1 マスに収める（重ならないよう明示する） */
+#app #offers .oc-b > *,
+#app #actionbox .dc-no > *, #app #actionbox .dc-yes > *,
+#app #actionbox .tc-ok > *, #app #actionbox .tc-cancel > *,
+#app #actionbox .abx-ok > * { grid-area: 1 / 1; }
+
+/* 手札の上にパネルが出ている間は、出目の分布は引っ込める。
+   同じ左下に居るので重なるうえ、選んでいる最中に読む物ではない。
+   （`#distbox` は HTML 上で `#actionbox` の後ろにあるので ~ で届く） */
+#app #actionbox.over-hand ~ #distbox { display: none; }
