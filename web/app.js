@@ -3591,19 +3591,66 @@ function randomSeed(k) {
 for (const [k, id] of ["seed", "seed2", "seed3", "seed4"].entries()) {
   document.getElementById(id).value = randomSeed(k);
 }
-loadLobby();
-document.getElementById("hstart").addEventListener("click", startFromHome);
-document.getElementById("myname").addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter") startFromHome();
-});
+/**
+ * 起動。
+ *
+ * 🔴 **何があっても真っ白にはしない**。
+ * 以前ここは「盤を隠す → ホームを出す」の順だったので、
+ * ブラウザが古い `index.html` を握っていて `#home` が無いと、
+ * 盤を隠した直後に失敗して画面に何も残らなかった（実際に踏んだ）。
+ * 配信物は別々に更新されるので、**HTML と JS の版がずれる前提**で書く。
+ */
+function showFatal(msg) {
+  const box = document.createElement("div");
+  box.style.cssText =
+    "position:fixed;inset:0;z-index:999;display:flex;align-items:center;justify-content:center;" +
+    "padding:24px;font:15px/1.8 system-ui,sans-serif;color:#16232e;text-align:center";
+  box.innerHTML =
+    `<div style="max-width:420px;background:rgba(255,255,255,.94);border-radius:16px;padding:24px">${msg}</div>`;
+  document.body.appendChild(box);
+}
 
-// 盤に入るのは「はじめる」を押してから。まず待機所を出す
-loadWasm()
-  .then(() => {
-    document.getElementById("app").hidden = true;
-    showHome();
-  })
-  .catch((e) => {
-    document.getElementById("hnote").textContent = "読み込みに失敗しました: " + e;
-    console.error(e);
+function boot() {
+  // 古い HTML が残っていたら、1 度だけ読み直して自分で直す
+  if (!document.getElementById("home")) {
+    let tried = "1";
+    try {
+      tried = sessionStorage.getItem("catan.reload") || "";
+      sessionStorage.setItem("catan.reload", "1");
+    } catch {
+      // 読めない環境では読み直しに頼らず、下の案内を出す
+    }
+    if (!tried) {
+      location.replace(location.pathname + "?v=" + Date.now());
+      return;
+    }
+    showFatal("表示を更新できませんでした。<br>ページを再読み込みしてください（Ctrl + F5）。");
+    return;
+  }
+  try {
+    sessionStorage.removeItem("catan.reload");
+  } catch {
+    // 消せなくても実害は無い
+  }
+
+  loadLobby();
+  document.getElementById("hstart").addEventListener("click", startFromHome);
+  document.getElementById("myname").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") startFromHome();
   });
+
+  // 盤に入るのは「はじめる」を押してから。まず待機所を出す
+  loadWasm()
+    .then(() => {
+      document.getElementById("app").hidden = true;
+      showHome();
+    })
+    .catch((e) => {
+      const note = document.getElementById("hnote");
+      if (note) note.textContent = "読み込みに失敗しました: " + e;
+      else showFatal("読み込みに失敗しました: " + e);
+      console.error(e);
+    });
+}
+
+boot();
