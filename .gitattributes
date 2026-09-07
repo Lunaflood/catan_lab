@@ -1,0 +1,4 @@
+# Windows のバッチファイルは CRLF でないと cmd.exe が読めない。
+# チェックアウト時に必ず CRLF にする（LF のままだと「認識されていません」で止まる）
+*.cmd text eol=crlf
+*.bat text eol=crlf
