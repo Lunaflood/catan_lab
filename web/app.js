@@ -3701,6 +3701,13 @@ function renderOnlineBox() {
   // 部屋に居る時。友達がすべきことは「リンクを開く」だけにしたいので、
   // 合言葉より **送るリンクそのもの** を主役にする
   const link = `${location.origin}${location.pathname}?join=${net.room}`;
+  // localhost や家の中のアドレスで部屋を作ると、コピーされるリンクも
+  // 家の中でしか通じない物になる。ここで気づけないと
+  // 「リンクを送ったのに友達が開けない」で詰まる
+  const host = location.hostname;
+  const privateHost =
+    host === "localhost" || host === "127.0.0.1" ||
+    /^192\.168\.|^10\.|^172\.(1[6-9]|2\d|3[01])\./.test(host);
   const who = net.members
     .map((m, i) => `<div class="hseat" style="--c:${PLAYER_INK[i % 4]}">
         <span class="sw"></span><span class="who">${escapeHtml(m.name)}</span></div>`)
@@ -3719,6 +3726,12 @@ function renderOnlineBox() {
        <input id="hlink" type="text" readonly value="${escapeHtml(link)}">
        <button id="hcopy" class="hbtn">リンクをコピー</button>
        <div class="hshare-s">うまくいかないときは、合言葉 <b>${net.room}</b> を直接伝えてください</div>
+       ${
+         privateHost
+           ? `<div class="hwarn">このリンクは<b>同じ家の中でしか開けません</b>。<br>
+                外の友達を呼ぶには、トンネルの https://... のアドレスで開き直してから部屋を作ってください。</div>`
+           : ""
+       }
      </div>
      <div class="hlabel hsub">この部屋の顔ぶれ</div>${who}${cpus}
      <button id="hleave" class="hbtn small">部屋を出る</button>`
@@ -3982,7 +3995,7 @@ for (const [k, id] of ["seed", "seed2", "seed3", "seed4"].entries()) {
   document.getElementById(id).value = randomSeed(k);
 }
 /** この版の目印。画面に出して、どの版が動いているかを一目で分かるようにする */
-const BUILD = "v11";
+const BUILD = "v12";
 
 /**
  * 起動。

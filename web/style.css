@@ -1559,6 +1559,11 @@ aside > div .chip, #drawer .chip { font-size: 12px; padding: 1px 7px 1px 4px; ga
 .hshare .hbtn { width: 100%; }
 .hshare-s { margin-top: 8px; font-size: 11.5px; color: #56687a; }
 .hshare-s b { font-size: 15px; letter-spacing: .22em; color: #16232e; }
+.hwarn {
+  margin-top: 8px; padding: 8px 10px; border-radius: 8px; font-size: 11.5px; line-height: 1.7;
+  color: #7a4a05; background: rgba(255, 171, 46, .18); border: 1px solid rgba(255, 171, 46, .5);
+}
+.hwarn b { color: #5c3703; }
 
 /* 招待リンクから来た人向け */
 .hinvite {
