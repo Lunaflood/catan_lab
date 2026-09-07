@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>カタン 動作チェック</title>
+</head>
+<body style="font:15px/1.9 system-ui,sans-serif;margin:0;padding:20px;background:#eef3f7;color:#16232e">
+<h1 style="font-size:19px;margin:0 0 14px">カタン 動作チェック</h1>
+<p style="margin:0 0 14px;font-size:13px;color:#56687a">
+  このページの結果をそのまま伝えてください。読み込みに数秒かかります。
+</p>
+<div id="out" style="white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:13px;
+  background:#fff;border-radius:10px;padding:14px;line-height:1.8">実行中…</div>
+
+<!-- 素の script。これが動かないなら JS 自体が止められている -->
+<script>
+  var lines = [];
+  function say(s) {
+    lines.push(s);
+    document.getElementById("out").textContent = lines.join("\n");
+  }
+  window.addEventListener("error", function (e) {
+    say("✗ エラー: " + (e.message || e.type) + (e.filename ? "  (" + e.filename + ")" : ""));
+  });
+  say("✓ 素の JavaScript は動く");
+  say("  ブラウザ: " + navigator.userAgent);
+  say("  画面: " + window.innerWidth + "×" + window.innerHeight);
+  say("  WebAssembly: " + (typeof WebAssembly === "object" ? "使える" : "✗ 使えない"));
+  say("  URL: " + location.href);
+
+  // 配信物が取れるか
+  var files = ["index.html", "app.js", "sfx.js", "style.css", "catan_wasm.wasm"];
+  files.forEach(function (f) {
+    fetch(f, { cache: "no-store" })
+      .then(function (r) {
+        say((r.ok ? "✓ " : "✗ ") + f + " : " + r.status);
+      })
+      .catch(function (e) {
+        say("✗ " + f + " : 取得できない (" + e + ")");
+      });
+  });
+</script>
+
+<!-- module が動くか。動かないブラウザ／設定だと、ここは丸ごと無視される -->
+<script type="module">
+  say("✓ module 形式の JavaScript も動く");
+  try {
+    const m = await import("./sfx.js");
+    say("✓ sfx.js を読めた (" + Object.keys(m).join(",") + ")");
+  } catch (e) {
+    say("✗ sfx.js を読めない: " + e);
+  }
+  try {
+    const res = await fetch("catan_wasm.wasm");
+    const buf = await res.arrayBuffer();
+    const { instance } = await WebAssembly.instantiate(buf, {});
+    say("✓ wasm を動かせた (" + Object.keys(instance.exports).length + " 個の関数)");
+  } catch (e) {
+    say("✗ wasm を動かせない: " + e);
+  }
+  say("--- ここまで出ていれば、本体も動くはずです ---");
+</script>
+</body>
+</html>
