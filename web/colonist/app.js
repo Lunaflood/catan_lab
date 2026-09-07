@@ -3954,12 +3954,15 @@ let net = {
   members: [],
   cpus: [],
   players: 4,
-  es: null,
   err: "",
-  /** 部屋の様子を配る線が生きているか。画面に印を出すために持つ */
+  /** 出来事が取れているか。画面に印を出すために持つ */
   live: false,
   /** 一覧の何番目が自分か（サーバが人ごとに教える） */
   me: -1,
+  /** どこまで受け取ったか */
+  since: 0,
+  /** 取りに行きの輪の世代。部屋を出たら進めて古い輪を止める */
+  gen: 0,
 };
 
 async function api(path, body) {
@@ -4018,28 +4021,62 @@ function netApply(m) {
   render();
 }
 
+/**
+ * 出来事を受け取り続ける。
+ *
+ * 🔴 **垂れ流し（EventSource / SSE）は使わない**。
+ * Cloudflare の無料トンネル越しでは、ヘッダだけ届いて本文が 1 バイトも流れない
+ * （サーバ側で `Transfer-Encoding: chunked` を正しくしても、詰め物を 16KB 入れても駄目）。
+ * 部屋の様子も開始の合図もこの線でしか届かないので、
+ * 「参加者が見えない」「はじめるを押しても始まらない」が同時に起きる。
+ *
+ * 代わりに **1 回の要求に 1 回の応答**（long poll）にする。
+ * サーバが新しい出来事が出るまで最大 25 秒待ってから返すので、
+ * 体感は垂れ流しとほぼ同じまま、経路は普通の要求と応答になる。
+ */
 function netOpen() {
-  if (net.es) net.es.close();
   net.live = false;
-  net.es = new EventSource(`api/events?room=${net.room}&token=${net.token}`);
-  // 部屋の様子は**この線でしか届かない**。繋がっているかどうかを画面に出す。
-  // ここが黙って死ぬと「参加が見えない」「はじめるを押しても始まらない」になる
-  net.es.onopen = () => {
-    net.live = true;
-    net.err = "";
-    if (!document.getElementById("home").hidden) renderHome();
-  };
-  net.es.onmessage = (ev) => {
-    if (!net.live) {
-      net.live = true;
-      net.err = "";
-    }
-    let m;
+  net.since = 0;
+  net.gen = (net.gen || 0) + 1;
+  netLoop(net.gen);
+}
+
+async function netLoop(gen) {
+  let fails = 0;
+  while (net.on && net.gen === gen) {
     try {
-      m = JSON.parse(ev.data);
-    } catch {
-      return;
+      const res = await fetch(
+        `api/poll?room=${encodeURIComponent(net.room)}&token=${encodeURIComponent(net.token)}&since=${net.since}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error(`poll ${res.status}`);
+      const d = await res.json();
+      if (net.gen !== gen) return;
+      fails = 0;
+      if (!net.live) {
+        net.live = true;
+        net.err = "";
+        if (!document.getElementById("home").hidden) renderHome();
+      }
+      if (d.seq != null) net.since = d.seq;
+      for (const m of d.msgs || []) netHandle(m);
+    } catch (e) {
+      if (net.gen !== gen) return;
+      fails++;
+      // 1 回の失敗では騒がない（回線の瞬きで毎回赤くしても意味が無い）
+      if (fails >= 2 && net.live !== false) {
+        net.live = false;
+        net.err = "サーバとの接続が切れました";
+        if (!document.getElementById("home").hidden) renderHome();
+        else renderPrompt();
+      }
+      await new Promise((r) => setTimeout(r, Math.min(400 * fails, 3000)));
     }
+  }
+}
+
+function netHandle(m) {
+  {
     switch (m.t) {
       case "lobby":
         net.members = m.members || [];
@@ -4073,15 +4110,9 @@ function netOpen() {
         showHome();
         break;
       default:
-        break; // ping
+        break; // 知らない種類は黙って捨てる
     }
-  };
-  net.es.onerror = () => {
-    net.live = false;
-    net.err = "サーバとの接続が切れました";
-    if (!document.getElementById("home").hidden) renderHome();
-    else renderPrompt();
-  };
+  }
 }
 
 async function netCreate() {
@@ -4109,8 +4140,9 @@ async function netJoin(code) {
 }
 
 function netLeave() {
-  if (net.es) net.es.close();
-  net = { on: false, room: null, token: null, seat: -1, members: [], cpus: [], players: 4, es: null, err: "", live: false, me: -1 };
+  // 世代を進めると、走っている取りに行きの輪はそこで止まる
+  net = { on: false, room: null, token: null, seat: -1, members: [], cpus: [], players: 4,
+          err: "", live: false, me: -1, since: 0, gen: (net.gen || 0) + 1 };
 }
 
 /* ---------------------------------------------------------------- ホーム（待機所） */

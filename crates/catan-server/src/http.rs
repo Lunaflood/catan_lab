@@ -126,7 +126,19 @@ pub fn open_sse(stream: &mut TcpStream) -> bool {
                 Cache-Control: no-store\r\nConnection: keep-alive\r\n\
                 Transfer-Encoding: chunked\r\n\
                 X-Accel-Buffering: no\r\n\r\n";
-    stream.write_all(head.as_bytes()).is_ok() && stream.flush().is_ok()
+    if !(stream.write_all(head.as_bytes()).is_ok() && stream.flush().is_ok()) {
+        return false;
+    }
+    // 🔴 **冒頭に詰め物を流す**。
+    //
+    // 中継（Cloudflare など）は、応答の頭が小さいうちは溜め込んで転送を始めない。
+    // 枠組み（chunked）を正しくしても、**溜め込みは別の話**で、
+    // ヘッダだけ届いて本文が 1 バイトも来ない状態になる（実測で 10 秒待っても無音）。
+    // 16KB ほど先に押し込むと緩衝が溢れて流れ出す。
+    // `:` で始まる行は SSE の注釈なので、受け取る側は読み飛ばす。
+    let pad = format!(":{}\n\n", " ".repeat(16384));
+    let chunk = format!("{:X}\r\n{}\r\n", pad.len(), pad);
+    stream.write_all(chunk.as_bytes()).is_ok() && stream.flush().is_ok()
 }
 
 pub fn push(stream: &mut TcpStream, data: &str) -> bool {

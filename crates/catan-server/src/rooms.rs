@@ -16,7 +16,6 @@ use catan_ai::bots::{bot_for_level, Bot};
 use catan_core::action::Action;
 use catan_core::game::{Game, GameConfig, TurnClock};
 use std::collections::HashSet;
-use std::net::TcpStream;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -26,9 +25,27 @@ pub const MAX_PLAYERS: usize = 4;
 pub struct Member {
     pub token: String,
     pub name: String,
-    /// 開いている配信の口。切れたら落とす
-    pub feeds: Vec<TcpStream>,
+    /// この人へ渡す出来事の控え。`(通し番号, 中身)`
+    ///
+    /// 🔴 **垂れ流し（SSE）はやめて、ここに積んで取りに来てもらう**。
+    /// Cloudflare の無料トンネルは長さの決まらない応答を溜め込んでしまい、
+    /// ヘッダだけ届いて本文が 1 バイトも流れない（実測。詰め物 16KB でも駄目）。
+    /// 「1 回の要求に 1 回の応答」なら、どんな中継でも必ず通る。
+    pub outbox: Vec<(u64, String)>,
+    /// 最後に取りに来た時刻。**居るかどうかの判定はこれで行う**
+    pub seen_at: u128,
     pub seat: Option<usize>,
+}
+
+impl Member {
+    pub fn new(token: String, name: String) -> Self {
+        Member { token, name, outbox: Vec::new(), seen_at: now_ms(), seat: None }
+    }
+
+    /// 取りに来ていない時間。長く空いたら「接続待ち」として出す
+    pub fn away_ms(&self) -> u128 {
+        now_ms().saturating_sub(self.seen_at)
+    }
 }
 
 pub enum Phase {
@@ -54,6 +71,8 @@ pub struct Room {
     pub last_touch: u128,
     /// 出来事の順序番号（v2 CPU への配信用）
     pub evseq: u64,
+    /// 控えの通し番号。取りに来た人が「どこまで受け取ったか」を言えるようにする
+    pub msgseq: u64,
 }
 
 pub fn now_ms() -> u128 {
@@ -109,6 +128,7 @@ impl Room {
             bot_at: 0,
             last_touch: now_ms(),
             evseq: 0,
+            msgseq: 0,
         }
     }
 
@@ -135,16 +155,52 @@ impl Room {
 
     // ---------------------------------------------------------------- 配信
 
+    /// 出来事の控えに積む。取りに来た人へ次の `poll` で渡る。
+    /// 古い分は捨てる（取りに来ない人の控えが際限なく伸びないように）
+    fn queue(&mut self, mi: usize, msg: &str) {
+        self.msgseq += 1;
+        let id = self.msgseq;
+        if let Some(m) = self.members.get_mut(mi) {
+            m.outbox.push((id, msg.to_string()));
+            if m.outbox.len() > 400 {
+                let cut = m.outbox.len() - 400;
+                m.outbox.drain(..cut);
+            }
+        }
+    }
+
     pub fn broadcast(&mut self, msg: &str) {
-        for m in &mut self.members {
-            m.feeds.retain_mut(|f| crate::http::push(f, msg));
+        for i in 0..self.members.len() {
+            self.queue(i, msg);
         }
     }
 
     pub fn send_to(&mut self, mi: usize, msg: &str) {
-        if let Some(m) = self.members.get_mut(mi) {
-            m.feeds.retain_mut(|f| crate::http::push(f, msg));
+        self.queue(mi, msg);
+    }
+
+    /// `since` より後の控えを JSON にして返す。無ければ `None`
+    pub fn drain_for(&self, mi: usize, since: u64) -> Option<String> {
+        let m = self.members.get(mi)?;
+        let items: Vec<&str> = m
+            .outbox
+            .iter()
+            .filter(|(id, _)| *id > since)
+            .map(|(_, s)| s.as_str())
+            .collect();
+        if items.is_empty() {
+            return None;
         }
+        let last = m.outbox.last().map(|(id, _)| *id).unwrap_or(since);
+        Some(format!("{{\"seq\":{},\"msgs\":[{}]}}", last, items.join(",")))
+    }
+
+    /// 取りこぼしを防ぐため、いまの控えの先端を返す
+    pub fn head_seq(&self, mi: usize) -> u64 {
+        self.members
+            .get(mi)
+            .and_then(|m| m.outbox.last().map(|(id, _)| *id))
+            .unwrap_or(0)
     }
 
     /// 待機所の様子。席は開始時に決まるので、ここでは並びだけ知らせる。
@@ -160,7 +216,8 @@ impl Room {
                 format!(
                     "{{\"name\":\"{}\",\"here\":{}}}",
                     crate::http::esc(&m.name),
-                    !m.feeds.is_empty()
+                    // 5 秒以内に取りに来ていれば「居る」
+                    m.away_ms() < 5000
                 )
             })
             .collect();

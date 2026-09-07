@@ -39,7 +39,7 @@ fn main() {
                 // 誰も居なくなった部屋は畳む（30 分）
                 let now = now_ms();
                 r.retain(|_, room| {
-                    let alive = room.members.iter().any(|m| !m.feeds.is_empty());
+                    let alive = room.members.iter().any(|m| m.away_ms() < 60_000);
                     if alive {
                         room.last_touch = now;
                     }
@@ -122,7 +122,7 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
             let token = new_token();
             let mut r = rooms.lock().unwrap();
             let mut room = Room::new(code.clone());
-            room.members.push(Member { token: token.clone(), name, feeds: Vec::new(), seat: None });
+            room.members.push(Member::new(token.clone(), name));
             room.balance(players);
             r.insert(code.clone(), room);
             http::send_json(
@@ -149,7 +149,7 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
                 return;
             }
             let token = new_token();
-            room.members.push(Member { token: token.clone(), name, feeds: Vec::new(), seat: None });
+            room.members.push(Member::new(token.clone(), name));
             let want = room.players().max(room.members.len());
             room.balance(want);
             room.send_lobby();
@@ -242,41 +242,73 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
         }
 
         // 配信の口。ここだけ繋ぎっぱなしにする
-        "events" => {
-            let code = req.query.get("room").cloned().unwrap_or_default().to_uppercase();
+        // 出来事を取りに来る口。
+        //
+        // 🔴 **垂れ流し（SSE）は使わない**。Cloudflare の無料トンネルは
+        // 長さの決まらない応答を溜め込み、ヘッダだけ届いて本文が 1 バイトも流れない
+        // （実測。`Transfer-Encoding: chunked` を付けても、詰め物を 16KB 入れても駄目）。
+        // 「1 回の要求に 1 回の応答」なら、どんな中継でも必ず通る。
+        //
+        // ただの一定間隔の取りに行きにすると、手を指してから相手の画面に出るまでが
+        // その間隔ぶん遅れる。そこで**待たせる**（long poll）── 新しい出来事が
+        // 出るまで最大 25 秒その場で持ち、出た瞬間に返す。
+        // 体感は垂れ流しとほぼ同じで、経路は普通の要求と応答のまま。
+        "poll" => {
+            let code = req
+                .query
+                .get("room")
+                .cloned()
+                .unwrap_or_default()
+                .to_uppercase();
             let token = req.query.get("token").cloned().unwrap_or_default();
-            if !http::open_sse(stream) {
-                return;
-            }
-            let Ok(feed) = stream.try_clone() else { return };
+            let since: u64 = req
+                .query
+                .get("since")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+
+            // 初回（since=0）は、まず待機所の様子を作ってから渡す
             {
                 let mut r = rooms.lock().unwrap();
-                let Some(room) = r.get_mut(&code) else { return };
-                let Some(mi) = room.member_of(&token) else { return };
-                room.members[mi].feeds.push(feed);
-                room.send_lobby();
+                let Some(room) = r.get_mut(&code) else {
+                    http::send_err(stream, "404 Not Found", "部屋がありません");
+                    return;
+                };
+                let Some(mi) = room.member_of(&token) else {
+                    http::send_err(stream, "404 Not Found", "その部屋には居ません");
+                    return;
+                };
+                room.members[mi].seen_at = rooms::now_ms();
+                if since == 0 {
+                    room.send_lobby();
+                }
             }
-            // 繋ぎっぱなしにする。落ちたら retain で外れる
+
+            let deadline = std::time::Instant::now() + Duration::from_secs(25);
             loop {
-                thread::sleep(Duration::from_secs(20));
-                let mut r = rooms.lock().unwrap();
-                let Some(room) = r.get_mut(&code) else { return };
-                if room.member_of(&token).is_none() {
-                    return;
+                {
+                    let mut r = rooms.lock().unwrap();
+                    let Some(room) = r.get_mut(&code) else {
+                        http::send_err(stream, "404 Not Found", "部屋がありません");
+                        return;
+                    };
+                    let Some(mi) = room.member_of(&token) else {
+                        http::send_err(stream, "404 Not Found", "その部屋には居ません");
+                        return;
+                    };
+                    room.members[mi].seen_at = rooms::now_ms();
+                    if let Some(body) = room.drain_for(mi, since) {
+                        http::send_json(stream, &body);
+                        return;
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        // 何も無かった。**先端の番号だけ返す**（次はそこから聞く）
+                        let seq = room.head_seq(mi).max(since);
+                        http::send_json(stream, &format!("{{\"seq\":{seq},\"msgs\":[]}}"));
+                        return;
+                    }
                 }
-                // 途中の機器が切らないよう、時々何か流す
-                let alive = room
-                    .members
-                    .iter_mut()
-                    .find(|m| m.token == token)
-                    .map(|m| {
-                        m.feeds.retain_mut(|f| http::push(f, "{\"t\":\"ping\"}"));
-                        !m.feeds.is_empty()
-                    })
-                    .unwrap_or(false);
-                if !alive {
-                    return;
-                }
+                thread::sleep(Duration::from_millis(80));
             }
         }
 
