@@ -49,8 +49,10 @@ try {
 } catch {}
 
 Say " --------------------------------------------------------"
-Say "  自分の PC で遊ぶ         http://localhost:8788/"
-if ($lan) { Say "  同じ家の Wi-Fi の友達    http://${lan}:8788/" }
+Say "  自分の PC で遊ぶ         http://localhost:8788/colonist/" Green
+if ($lan) { Say "  同じ家の Wi-Fi の友達    http://${lan}:8788/colonist/" Green }
+Say ""
+Say "  （前の見た目で遊びたいときは、末尾の colonist/ を外す）" DarkGray
 Say " --------------------------------------------------------"
 Say ""
 
@@ -96,11 +98,11 @@ if ($tunnelUrl) {
     Say " ========================================================" Green
     Say "   外の友達に渡すアドレス" Green
     Say ""
-    Say "     $tunnelUrl" Green
+    Say "     $tunnelUrl/colonist/" Green
     Say ""
     Say "   ↑ まずこれを自分のブラウザで開いてから部屋を作ってください" Green
     Say " ========================================================" Green
-    try { Set-Clipboard -Value $tunnelUrl; Say "   （コピー済みです。そのまま貼り付けられます）" DarkGray } catch {}
+    try { Set-Clipboard -Value "$tunnelUrl/colonist/"; Say "   （コピー済みです。そのまま貼り付けられます）" DarkGray } catch {}
 } elseif ($cf) {
     Say "  外向けのアドレスを取得できませんでした。" Red
     Say "  詳しくは $env:TEMP\catan-tunnel.log を見てください。" Red
