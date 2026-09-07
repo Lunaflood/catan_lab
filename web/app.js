@@ -3390,14 +3390,15 @@ function renderHome() {
 
   const lv = lobby.members.filter((m) => m.kind === "cpu").map((m) => LEVEL_NAMES[m.level]);
   document.getElementById("hnote").textContent =
-    `${lobby.members.length} 人（あなた + CPU ${lv.length} 体: ${lv.join("・")}）`;
+    `${lobby.members.length} 人（あなた + CPU ${lv.length} 体: ${lv.join("・")}）　${BUILD}`;
 }
 
 function showHome() {
   clearTimeout(botTimer);
   watching = false;
   document.getElementById("home").hidden = false;
-  document.getElementById("app").hidden = true;
+  const app = document.getElementById("app");
+  if (app) app.hidden = true;
   renderHome();
 }
 
@@ -3405,7 +3406,8 @@ function startFromHome() {
   lobby.name = document.getElementById("myname").value.trim() || "あなた";
   saveLobby();
   document.getElementById("home").hidden = true;
-  document.getElementById("app").hidden = false;
+  const app = document.getElementById("app");
+  if (app) app.hidden = false;
   newGame(true);
 }
 
@@ -3591,46 +3593,93 @@ function randomSeed(k) {
 for (const [k, id] of ["seed", "seed2", "seed3", "seed4"].entries()) {
   document.getElementById(id).value = randomSeed(k);
 }
+/** この版の目印。画面に出して、どの版が動いているかを一目で分かるようにする */
+const BUILD = "v3";
+
 /**
  * 起動。
  *
  * 🔴 **何があっても真っ白にはしない**。
- * 以前ここは「盤を隠す → ホームを出す」の順だったので、
- * ブラウザが古い `index.html` を握っていて `#home` が無いと、
- * 盤を隠した直後に失敗して画面に何も残らなかった（実際に踏んだ）。
- * 配信物は別々に更新されるので、**HTML と JS の版がずれる前提**で書く。
+ * 配信ファイル（HTML / JS / CSS）はブラウザが別々に握るので、
+ * **版がずれている前提**で書く。以前ここは「盤を隠す → ホームを出す」の順で、
+ * 古い HTML には `#home` が無いため、盤を隠した直後に失敗して画面に何も残らなかった。
+ *
+ * 対策は「読み直させる」ではなく **「無ければ自分で作る」**。
+ * ホーム画面の中身は下の `HOME_HTML` に持っているので、
+ * HTML がどれだけ古くても、JS さえ新しければ待機所は出せる。
  */
+const HOME_HTML = `
+  <div class="hcard">
+    <h1>カタン</h1>
+    <label class="hrow">
+      <span class="hlabel">あなたの名前</span>
+      <input id="myname" type="text" maxlength="12" placeholder="なまえ">
+    </label>
+    <div class="hrow">
+      <span class="hlabel">人数</span>
+      <div id="hplayers" class="hseg"></div>
+    </div>
+    <div class="hlabel hsub">対戦相手</div>
+    <div id="hseats"></div>
+    <button id="hstart" class="hstart">はじめる</button>
+    <div class="hnote" id="hnote"></div>
+  </div>`;
+
 function showFatal(msg) {
   const box = document.createElement("div");
   box.style.cssText =
     "position:fixed;inset:0;z-index:999;display:flex;align-items:center;justify-content:center;" +
-    "padding:24px;font:15px/1.8 system-ui,sans-serif;color:#16232e;text-align:center";
+    "padding:24px;font:15px/1.8 system-ui,sans-serif;color:#16232e;text-align:center;" +
+    "background:linear-gradient(180deg,#2f8ab6,#2678a4)";
   box.innerHTML =
     `<div style="max-width:420px;background:rgba(255,255,255,.94);border-radius:16px;padding:24px">${msg}</div>`;
   document.body.appendChild(box);
 }
 
-function boot() {
-  // 古い HTML が残っていたら、1 度だけ読み直して自分で直す
-  if (!document.getElementById("home")) {
-    let tried = "1";
-    try {
-      tried = sessionStorage.getItem("catan.reload") || "";
-      sessionStorage.setItem("catan.reload", "1");
-    } catch {
-      // 読めない環境では読み直しに頼らず、下の案内を出す
-    }
-    if (!tried) {
-      location.replace(location.pathname + "?v=" + Date.now());
-      return;
-    }
-    showFatal("表示を更新できませんでした。<br>ページを再読み込みしてください（Ctrl + F5）。");
-    return;
+/** ホーム画面の器を用意する。HTML に無ければ作る（古い HTML への保険） */
+function ensureHome() {
+  let home = document.getElementById("home");
+  if (!home) {
+    home = document.createElement("div");
+    home.id = "home";
+    document.body.insertBefore(home, document.body.firstChild);
   }
+  if (!document.getElementById("hstart")) home.innerHTML = HOME_HTML;
+  return home;
+}
+
+/** 古い CSS しか無くても待機所が読めるように、最低限の見た目を自前で持つ */
+function ensureHomeStyle() {
+  if (getComputedStyle(document.getElementById("home")).position === "fixed") return;
+  const st = document.createElement("style");
+  st.textContent = `
+    #home{position:fixed;inset:0;z-index:200;display:flex;align-items:center;
+      justify-content:center;padding:24px;overflow-y:auto}
+    #home[hidden]{display:none}
+    #home .hcard{width:min(520px,100%);background:rgba(255,255,255,.95);border-radius:20px;
+      padding:26px;color:#16232e}
+    #home h1{margin:0 0 20px;font-size:22px;letter-spacing:.34em;text-align:center}
+    #home .hrow{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+    #home .hlabel{width:108px;font-size:12px;font-weight:700;color:#4c5f70}
+    #home input[type=text]{flex:1;padding:9px 13px;font-size:15px;border-radius:10px}
+    .hseg{display:flex;gap:8px}
+    .hseat{display:flex;align-items:center;gap:10px;padding:9px 12px;margin-bottom:7px;
+      border-radius:12px;background:rgba(16,34,48,.06)}
+    .hseat .who{flex:1;font-weight:700}
+    .hstart{width:100%;margin-top:20px;padding:13px;font-size:17px;font-weight:800;
+      border-radius:12px;background:#ffab2e;color:#2a1b04;border:0}
+    .hnote{margin-top:10px;font-size:11.5px;color:#56687a;text-align:center}`;
+  document.head.appendChild(st);
+}
+
+function boot() {
   try {
-    sessionStorage.removeItem("catan.reload");
-  } catch {
-    // 消せなくても実害は無い
+    ensureHome();
+    ensureHomeStyle();
+  } catch (e) {
+    showFatal("画面を作れませんでした: " + e);
+    console.error(e);
+    return;
   }
 
   loadLobby();
@@ -3642,7 +3691,8 @@ function boot() {
   // 盤に入るのは「はじめる」を押してから。まず待機所を出す
   loadWasm()
     .then(() => {
-      document.getElementById("app").hidden = true;
+      const app = document.getElementById("app");
+      if (app) app.hidden = true;
       showHome();
     })
     .catch((e) => {
