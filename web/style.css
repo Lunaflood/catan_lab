@@ -1420,6 +1420,11 @@ aside > div .chip, #drawer .chip { font-size: 12px; padding: 1px 7px 1px 4px; ga
   text-shadow: 0 0 24px rgba(242,181,68,.35);
 }
 
+/* 🔴 `hidden` は UA の `display:none` でしかないので、
+   `#app { display:flex }` に負ける（#drawer で 1 度踏んだのと同じ罠）。
+   明示しないと、待機所の裏で盤の欄が居座って白い帯として見える */
+#app[hidden] { display: none; }
+
 /* ---------------------------------------------------------------- ホーム（待機所） */
 
 /* 盤に入る前の待機所。ここで人数・相手・名前を決める。
@@ -1431,7 +1436,12 @@ aside > div .chip, #drawer .chip { font-size: 12px; padding: 1px 7px 1px 4px; ga
 }
 #home[hidden] { display: none; }
 
-#home .hcard {
+/* ⚠ 名前は「手札のカード(.hcard)」と必ず分けること。
+   同じにしていたら、手札側の `flex:1 1 0` と `aspect-ratio:2/3` を拾って
+   横に広い画面でカードが 2503×3755px の巨大な白い箱になり、
+   その内側だけが映って「真っ白」に見えた（実際に踏んだ）。
+   このファイルは 1 枚で全画面ぶんを持っているので、クラス名は使い回さない */
+#home .homecard {
   width: min(520px, 100%);
   background: rgba(255, 255, 255, .93);
   backdrop-filter: blur(22px) saturate(.9) brightness(1.15);

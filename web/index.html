@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>カタン</title>
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 <!-- ホーム（待機所）。ここで人数・相手・名前を決めてから盤に入る。
      オンライン対戦を足すときは、この一覧に「他の人」が並ぶ -->
 <div id="home">
-  <div class="hcard">
+  <div class="homecard">
     <h1>カタン</h1>
 
     <label class="hrow">
@@ -31,7 +31,7 @@
   </div>
 </div>
 
-<div id="app">
+<div id="app" hidden>
   <!-- 盤に集中できるよう、上の帯ごと畳めるようにする。この矢印だけは常に出る -->
   <button id="uitoggle" title="上の欄を出す／隠す">▾</button>
   <!-- 音は消せないと困る。畳んだ帯の中に入れず、常に押せる場所に置く -->
@@ -110,6 +110,6 @@
     <div id="dcols"></div>
   </div>
 </div>
-<script type="module" src="app.js?v=3"></script>
+<script type="module" src="app.js?v=6"></script>
 </body>
 </html>

@@ -3396,7 +3396,11 @@ function renderHome() {
 function showHome() {
   clearTimeout(botTimer);
   watching = false;
-  document.getElementById("home").hidden = false;
+  const home = document.getElementById("home");
+  home.hidden = false;
+  home.style.display = "flex";
+  // 前の対局で下までスクロールしていることがある。必ず頭に戻す
+  window.scrollTo(0, 0);
   const app = document.getElementById("app");
   if (app) app.hidden = true;
   renderHome();
@@ -3405,7 +3409,9 @@ function showHome() {
 function startFromHome() {
   lobby.name = document.getElementById("myname").value.trim() || "あなた";
   saveLobby();
-  document.getElementById("home").hidden = true;
+  const home = document.getElementById("home");
+  home.hidden = true;
+  home.style.display = "none";
   const app = document.getElementById("app");
   if (app) app.hidden = false;
   newGame(true);
@@ -3594,7 +3600,7 @@ for (const [k, id] of ["seed", "seed2", "seed3", "seed4"].entries()) {
   document.getElementById(id).value = randomSeed(k);
 }
 /** この版の目印。画面に出して、どの版が動いているかを一目で分かるようにする */
-const BUILD = "v3";
+const BUILD = "v6";
 
 /**
  * 起動。
@@ -3609,7 +3615,7 @@ const BUILD = "v3";
  * HTML がどれだけ古くても、JS さえ新しければ待機所は出せる。
  */
 const HOME_HTML = `
-  <div class="hcard">
+  <div class="homecard">
     <h1>カタン</h1>
     <label class="hrow">
       <span class="hlabel">あなたの名前</span>
@@ -3636,7 +3642,14 @@ function showFatal(msg) {
   document.body.appendChild(box);
 }
 
-/** ホーム画面の器を用意する。HTML に無ければ作る（古い HTML への保険） */
+/**
+ * ホーム画面の器を用意する。HTML に無ければ作る（古い HTML への保険）。
+ *
+ * 🔴 位置は **要素に直接** 書く。古い style.css が残っていると
+ * `#home` がただの箱として流し込まれ、盤の下へ押し出されて
+ * 「スクロールしないと出てこない」状態になる（実際にそうなった）。
+ * 直接書いた指定は、どんな古い CSS よりも強い。
+ */
 function ensureHome() {
   let home = document.getElementById("home");
   if (!home) {
@@ -3645,6 +3658,9 @@ function ensureHome() {
     document.body.insertBefore(home, document.body.firstChild);
   }
   if (!document.getElementById("hstart")) home.innerHTML = HOME_HTML;
+  home.style.cssText =
+    "position:fixed;inset:0;z-index:200;display:flex;align-items:center;" +
+    "justify-content:center;padding:24px;overflow-y:auto";
   return home;
 }
 
@@ -3656,7 +3672,7 @@ function ensureHomeStyle() {
     #home{position:fixed;inset:0;z-index:200;display:flex;align-items:center;
       justify-content:center;padding:24px;overflow-y:auto}
     #home[hidden]{display:none}
-    #home .hcard{width:min(520px,100%);background:rgba(255,255,255,.95);border-radius:20px;
+    #home .homecard{width:min(520px,100%);background:rgba(255,255,255,.95);border-radius:20px;
       padding:26px;color:#16232e}
     #home h1{margin:0 0 20px;font-size:22px;letter-spacing:.34em;text-align:center}
     #home .hrow{display:flex;align-items:center;gap:14px;margin-bottom:14px}
