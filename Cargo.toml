@@ -5,6 +5,7 @@ members = [
     "crates/catan-ai",
     "crates/catan-cli",
     "crates/catan-wasm",
+    "crates/catan-server",
 ]
 
 [workspace.package]

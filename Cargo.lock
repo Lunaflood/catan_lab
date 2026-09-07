@@ -22,6 +22,14 @@ name = "catan-core"
 version = "0.1.0"
 
 [[package]]
+name = "catan-server"
+version = "0.1.0"
+dependencies = [
+ "catan-ai",
+ "catan-core",
+]
+
+[[package]]
 name = "catan-wasm"
 version = "0.1.0"
 dependencies = [

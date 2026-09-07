@@ -13,7 +13,9 @@ use catan_core::rng::Rng;
 use catan_core::topology::{EdgeId, NodeId};
 use catan_core::view::View;
 
-pub trait Bot {
+/// `Send` を課すのは、オンライン対戦のサーバが部屋ごと別スレッドへ渡すため。
+/// 中身は乱数の種と重みだけなので、どのボットも満たしている。
+pub trait Bot: Send {
     fn name(&self) -> String;
     /// `actions` は空でないことが保証される。
     ///

@@ -1808,17 +1808,29 @@ function humanSeats() {
   return state.players.filter((p) => p.human).map((p) => p.id);
 }
 
-function renderAgainNote() {
+function renderAgainNote(have, need) {
   const el = document.getElementById("rnote");
   if (!el) return;
-  const need = humanSeats().length;
+  if (net.on) {
+    const n = need !== undefined ? need : net.members.length;
+    const h = have !== undefined ? have : againVotes.size;
+    el.textContent =
+      `もう一度: ${h} / ${n} 人　　「ホームに戻る」は誰か 1 人が押すと全員戻ります`;
+    return;
+  }
+  const seats = humanSeats().length;
   el.textContent =
-    need <= 1
+    seats <= 1
       ? "「ホームに戻る」で人数や強さを変えられます"
-      : `もう一度: ${againVotes.size} / ${need} 人`;
+      : `もう一度: ${againVotes.size} / ${seats} 人`;
 }
 
 function againVote() {
+  // 全員が押したら進む。オンラインでは票を数えるのもサーバ
+  if (net.on) {
+    api("again", { room: net.room, token: net.token }).catch((e) => console.warn(e));
+    return;
+  }
   if (mySeat >= 0) againVotes.add(mySeat);
   const need = humanSeats();
   if (need.every((p) => againVotes.has(p)) || need.length === 0) {
@@ -1832,6 +1844,11 @@ function againVote() {
 
 function goHome() {
   againVotes.clear();
+  // 誰か 1 人が押したら全員戻る。合図はサーバから配られる
+  if (net.on) {
+    api("home", { room: net.room, token: net.token }).catch((e) => console.warn(e));
+    return;
+  }
   showHome();
 }
 
@@ -2021,7 +2038,7 @@ function renderPlayers() {
       <div class="pscore">
         <div class="vp" title="${vpTip}">${vpNum}<i>pt</i></div>
         <div class="name">${escapeHtml(nameOf(p.id))}</div>
-        <div class="me">${p.human ? "あなた" : "CPU"}</div>
+        <div class="me">${p.id === mySeat ? "あなた" : isHumanSeat(p) ? "" : "CPU"}</div>
       </div>
       <div class="pinfo">
         ${tags.length ? `<div class="ptags">${tags.join("")}</div>` : ""}
@@ -2322,7 +2339,10 @@ function renderTradeComposer(box, mode) {
       );
       box.querySelectorAll(".sdel").forEach((b) => {
         b.addEventListener("click", (ev) => {
-          if (wasm.counter_alt_remove(+ev.currentTarget.dataset.i) === 1) {
+          const idx = +ev.currentTarget.dataset.i;
+          if (net.on) {
+            netSend({ k: "altRemove", n: idx });
+          } else if (wasm.counter_alt_remove(idx) === 1) {
             refreshState();
             render();
           }
@@ -2344,6 +2364,13 @@ function renderTradeComposer(box, mode) {
           : "",
         disabled: !ok || staged >= 4 || !allowed || asOffered,
         onClick: () => {
+          if (net.on) {
+            sfx.play("offer");
+            netSend({ k: "alt", g: draft.give, w: draft.want });
+            draft = { give: [0, 0, 0, 0, 0], want: [0, 0, 0, 0, 0] };
+            render();
+            return;
+          }
           if (wasm.counter_alt(...draft.give, ...draft.want) === 1) {
             sfx.play("offer");
             // 積んだ後は空にする。元の条件に戻すと、次の候補を作るのに
@@ -2370,6 +2397,24 @@ function renderTradeComposer(box, mode) {
     sub: counter ? "" : ok ? "" : `<span class="no">両側に 1 枚以上</span>`,
     disabled: !canSend,
     onClick: () => {
+      if (net.on) {
+        // 対案は「積んだ候補のうち最後の 1 本」を返す（counter_finish と同じ中身）。
+        // サーバは条件そのものを受け取るので、こちらで取り出して送る
+        let g = draft.give, w = draft.want;
+        if (counter) {
+          const last = alts[alts.length - 1];
+          if (!last) return;
+          g = last.give;
+          w = last.want;
+        }
+        sfx.play("offer");
+        reopenOffer = !counter;
+        clearDraft();
+        openMenu = null;
+        netSend({ k: counter ? "counter" : "offer", g, w });
+        render();
+        return;
+      }
       const okDone = counter ? wasm.counter_finish() === 1 : wasm.offer_custom(...draft.give, ...draft.want) === 1;
       if (okDone) {
         sfx.play("offer");
@@ -2529,6 +2574,13 @@ function renderBankTrade(box) {
       sub: "",
       disabled: !ok,
       onClick: () => {
+        if (net.on) {
+          netSend({ k: "maritime", g: bank.give, w: bank.take });
+          openMenu = null;
+          clearDraft();
+          render();
+          return;
+        }
         if (wasm.maritime_bulk(...bank.give, ...bank.take) === 1) {
           clearBank();
           openMenu = null;
@@ -2605,6 +2657,12 @@ function renderDiscard(box) {
       sub: picked === need ? `${need} 枚` : `あと ${need - picked} 枚`,
       disabled: picked !== need,
       onClick: () => {
+        if (net.on) {
+          netSend({ k: "discard", g: draft.give });
+          clearDraft();
+          render();
+          return;
+        }
         if (wasm.discard_custom(...draft.give) === 1) {
           clearDraft();
           refreshState();
@@ -3268,6 +3326,18 @@ function render() {
 }
 
 function play(i) {
+  // オンラインでは、自分の手もサーバを通してから盤に入れる。
+  // 手元で先に進めると、他の人と手順が入れ替わってずれる
+  if (net.on) {
+    robberTile = null;
+    pickKind = null;
+    openMenu = null;
+    reopenOffer = false;
+    clearDraft();
+    netSend({ i });
+    render();
+    return;
+  }
   robberTile = null;
   pickKind = null;
   openMenu = null;
@@ -3297,6 +3367,161 @@ function scheduleBot() {
   }, wait);
 }
 
+/* ---------------------------------------------------------------- オンライン対戦
+
+   エンジンは決定的なので、**同じ種と同じ手順**を入れれば、どの端末でも同じ盤になる。
+   だからサーバから届くのは「何番目の手を指したか」だけで、盤はここで再現する。
+   サーバが裁くのは「誰の手番か」だけ。それ以外はいつもの 1 人用と同じ道を通る。
+*/
+
+let net = {
+  on: false,
+  room: null,
+  token: null,
+  seat: -1,
+  members: [],
+  cpus: [],
+  players: 4,
+  es: null,
+  err: "",
+};
+
+async function api(path, body) {
+  const res = await fetch("api/" + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  const text = await res.text();
+  let data = {};
+  try {
+    data = JSON.parse(text);
+  } catch {
+    // 返事が JSON でないのは、サーバではない所に繋がっている時
+  }
+  if (res.status === 404 && !data.error) {
+    // GitHub Pages のような静的配信にはサーバが無い。ここで気づけるようにする
+    throw new Error("この配信にはサーバがありません。友達と遊ぶには catan-server を立ててください");
+  }
+  if (!res.ok) throw new Error(data.error || `通信に失敗しました (${res.status})`);
+  return data;
+}
+
+/** 手を送る。**自分の手も、サーバから返ってきてから盤に入れる**（順番を 1 つに保つため） */
+function netSend(payload) {
+  api("act", { room: net.room, token: net.token, ...payload }).catch((e) => {
+    net.err = e.message;
+    renderPrompt();
+    console.warn(e);
+  });
+}
+
+/** サーバから届いた手を、自分のエンジンに入れる */
+function netApply(m) {
+  const g = m.g || [0, 0, 0, 0, 0];
+  const w = m.w || [0, 0, 0, 0, 0];
+  let ok = 0;
+  switch (m.k) {
+    case "offer": ok = wasm.offer_custom(...g, ...w); break;
+    case "counter": ok = wasm.counter_custom(...g, ...w); break;
+    case "alt": ok = wasm.counter_alt(...g, ...w); break;
+    case "altRemove": ok = wasm.counter_alt_remove(m.n | 0); break;
+    case "discard": ok = wasm.discard_custom(...g); break;
+    case "maritime": ok = wasm.maritime_bulk(...g, ...w); break;
+    default: ok = wasm.apply_index(m.i | 0); break;
+  }
+  if (!ok) {
+    // ここがずれると以降が全部おかしくなる。黙って進めない
+    net.err = "盤面がサーバとずれました。ホームに戻ってやり直してください";
+  }
+  refreshState();
+  // 手番の食い違いは、ずれの一番早い兆候
+  if (typeof m.toAct === "number" && state.toAct !== m.toAct) {
+    net.err = "盤面がサーバとずれました。ホームに戻ってやり直してください";
+  }
+  render();
+}
+
+function netOpen() {
+  if (net.es) net.es.close();
+  net.es = new EventSource(`api/events?room=${net.room}&token=${net.token}`);
+  net.es.onmessage = (ev) => {
+    let m;
+    try {
+      m = JSON.parse(ev.data);
+    } catch {
+      return;
+    }
+    switch (m.t) {
+      case "lobby":
+        net.members = m.members || [];
+        net.cpus = m.cpus || [];
+        net.players = m.players || 4;
+        if (!document.getElementById("home").hidden) renderHome();
+        break;
+      case "start": {
+        net.seat = m.yourSeat;
+        document.getElementById("home").hidden = true;
+        document.getElementById("home").style.display = "none";
+        const app = document.getElementById("app");
+        if (app) app.hidden = false;
+        newGame(false, {
+          seeds: m.seeds, players: m.players, seat: m.yourSeat,
+          names: m.names, humans: m.humans || [],
+        });
+        break;
+      }
+      case "act":
+        netApply(m);
+        break;
+      case "over":
+        break; // 決着は盤の状態から分かる
+      case "vote":
+        againVotes = new Set(Array(m.again).fill(0).map((_, i) => i));
+        renderAgainNote(m.again, m.need);
+        break;
+      case "home":
+        showHome();
+        break;
+      default:
+        break; // ping
+    }
+  };
+  net.es.onerror = () => {
+    net.err = "サーバとの接続が切れました";
+    renderPrompt();
+  };
+}
+
+async function netCreate() {
+  const name = document.getElementById("myname").value.trim() || "あなた";
+  lobby.name = name;
+  saveLobby();
+  const r = await api("create", { name, players: lobby.members.length });
+  net.on = true;
+  net.room = r.room;
+  net.token = r.token;
+  netOpen();
+  renderHome();
+}
+
+async function netJoin(code) {
+  const name = document.getElementById("myname").value.trim() || "あなた";
+  lobby.name = name;
+  saveLobby();
+  const r = await api("join", { room: code.toUpperCase(), name });
+  net.on = true;
+  net.room = r.room;
+  net.token = r.token;
+  netOpen();
+  renderHome();
+}
+
+function netLeave() {
+  if (net.es) net.es.close();
+  net = { on: false, room: null, token: null, seat: -1, members: [], cpus: [], players: 4, es: null, err: "" };
+}
+
 /* ---------------------------------------------------------------- ホーム（待機所） */
 
 /**
@@ -3319,9 +3544,16 @@ const LEVEL_NAMES = ["やさしい", "ふつう", "つよい", "さいきょう"
 
 /** 席 → 表示名。対局が始まると席の並びが決まるので、そこで作る */
 let seatNames = [];
+/** 席 → 人かどうか。手元のエンジンは「自分だけが人」なので、表示はこちらで持つ */
+let seatHuman = [];
 
 function nameOf(pid) {
   return seatNames[pid] || `P${pid}`;
+}
+
+/** その席は人か。オンラインではサーバの一覧、1 人用ではエンジンの答えを使う */
+function isHumanSeat(p) {
+  return seatHuman.length ? !!seatHuman[p.id] : !!p.human;
 }
 
 function loadLobby() {
@@ -3364,7 +3596,8 @@ function renderHome() {
 
   const box = document.getElementById("hseats");
   box.innerHTML = "";
-  lobby.members.forEach((m, i) => {
+  const seatList = net.on ? [] : lobby.members;
+  seatList.forEach((m, i) => {
     const d = document.createElement("div");
     d.className = "hseat";
     d.style.setProperty("--c", PLAYER_INK[i]);
@@ -3389,8 +3622,90 @@ function renderHome() {
   });
 
   const lv = lobby.members.filter((m) => m.kind === "cpu").map((m) => LEVEL_NAMES[m.level]);
-  document.getElementById("hnote").textContent =
-    `${lobby.members.length} 人（あなた + CPU ${lv.length} 体: ${lv.join("・")}）　${BUILD}`;
+  document.getElementById("hnote").textContent = net.on
+    ? `合言葉 ${net.room}　この文字を友達に伝えてください　${BUILD}`
+    : `${lobby.members.length} 人（あなた + CPU ${lv.length} 体: ${lv.join("・")}）　${BUILD}`;
+
+  renderOnlineBox();
+}
+
+/**
+ * 待機所のオンライン欄。
+ *
+ * 1 人で遊ぶ時は「部屋を作る／入る」だけ、
+ * 部屋に居る時は合言葉と参加者を出す。
+ */
+function renderOnlineBox() {
+  let box = document.getElementById("honline");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "honline";
+    const start = document.getElementById("hstart");
+    start.parentNode.insertBefore(box, start);
+  }
+  if (net.err) {
+    box.innerHTML = `<div class="herr">${escapeHtml(net.err)}</div>`;
+  } else {
+    box.innerHTML = "";
+  }
+
+  if (!net.on) {
+    box.insertAdjacentHTML(
+      "beforeend",
+      `<div class="honl">
+         <button id="hcreate" class="hbtn">友達と遊ぶ部屋を作る</button>
+         <div class="hjoin">
+           <input id="hcode" type="text" maxlength="4" placeholder="合言葉" autocomplete="off">
+           <button id="hjoin" class="hbtn">入る</button>
+         </div>
+       </div>`
+    );
+    const go = (fn) => () => {
+      net.err = "";
+      fn().catch((e) => {
+        net.err = e.message;
+        renderHome();
+      });
+    };
+    box.querySelector("#hcreate").addEventListener("click", go(netCreate));
+    box.querySelector("#hjoin").addEventListener("click",
+      go(() => netJoin(document.getElementById("hcode").value.trim())));
+    box.querySelector("#hcode").addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") box.querySelector("#hjoin").click();
+    });
+    return;
+  }
+
+  // 部屋に居る時。参加者はサーバが配る一覧をそのまま出す
+  const who = net.members
+    .map((m, i) => `<div class="hseat" style="--c:${PLAYER_INK[i % 4]}">
+        <span class="sw"></span><span class="who">${escapeHtml(m.name)}</span></div>`)
+    .join("");
+  const cpus = net.cpus
+    .map((lv, i) => `<div class="hseat" style="--c:${PLAYER_INK[(net.members.length + i) % 4]}">
+        <span class="sw"></span><span class="who">CPU</span>
+        <select data-cpu="${i}">${LEVEL_NAMES.map(
+          (nm, k) => `<option value="${k}"${k === lv ? " selected" : ""}>${nm}</option>`
+        ).join("")}</select></div>`)
+    .join("");
+  box.insertAdjacentHTML(
+    "beforeend",
+    `<div class="hcode">合言葉 <b>${net.room}</b></div>${who}${cpus}
+     <button id="hleave" class="hbtn small">部屋を出る</button>`
+  );
+  box.querySelectorAll("select[data-cpu]").forEach((sel) => {
+    sel.addEventListener("change", (ev) => {
+      api("settings", {
+        room: net.room,
+        cpu: +ev.currentTarget.dataset.cpu,
+        level: +ev.currentTarget.value,
+      }).catch((e) => console.warn(e));
+    });
+  });
+  box.querySelector("#hleave").addEventListener("click", () => {
+    netLeave();
+    renderHome();
+  });
 }
 
 function showHome() {
@@ -3409,6 +3724,14 @@ function showHome() {
 function startFromHome() {
   lobby.name = document.getElementById("myname").value.trim() || "あなた";
   saveLobby();
+  if (net.on) {
+    // 開始もサーバが決める。合図が返ってきたら全員同時に盤へ入る
+    api("start", { room: net.room, token: net.token }).catch((e) => {
+      net.err = e.message;
+      renderHome();
+    });
+    return;
+  }
   const home = document.getElementById("home");
   home.hidden = true;
   home.style.display = "none";
@@ -3417,7 +3740,7 @@ function startFromHome() {
   newGame(true);
 }
 
-function newGame(newSeed) {
+function newGame(newSeed, online) {
   clearTimeout(botTimer);
   clearTimeout(rollHide);
   clearInterval(rollTimer);
@@ -3434,28 +3757,43 @@ function newGame(newSeed) {
   if (newSeed) {
     for (const [k, id] of ids.entries()) document.getElementById(id).value = randomSeed(k);
   }
-  const [boardSeed, diceSeed, devSeed, stealSeed] = ids.map((id) =>
+  let [boardSeed, diceSeed, devSeed, stealSeed] = ids.map((id) =>
     parseInt(document.getElementById(id).value || "1", 10)
   );
-  const players = lobby.members.length;
-  // 席もランダムに。毎回 1 番手だと初手の有利不利が固定されてしまう。
-  // 種から決めるので、同じ種なら席も含めて同じ試合を再現できる。
-  mySeat = watching ? -1 : diceSeed % players;
+  let players;
+  if (online) {
+    // 席も種もサーバが決める。**全員が同じ物を受け取る**ことが成立の条件
+    [boardSeed, diceSeed, devSeed, stealSeed] = online.seeds;
+    players = online.players;
+    mySeat = online.seat;
+  } else {
+    players = lobby.members.length;
+    // 席もランダムに。毎回 1 番手だと初手の有利不利が固定されてしまう。
+    // 種から決めるので、同じ種なら席も含めて同じ試合を再現できる。
+    mySeat = watching ? -1 : diceSeed % players;
+  }
 
   // 参加者を席に配る。人間は上で決めた席、CPU は残りへ順に。
   // 名前と強さはここで席の並びに写す（以降の描画は席番号だけを見る）
   seatNames = new Array(players);
   let levels = 0;
-  const cpus = lobby.members.filter((m) => m.kind === "cpu");
-  let ci = 0;
-  for (let seat = 0; seat < players; seat++) {
-    if (seat === mySeat) {
-      seatNames[seat] = lobby.name || "あなた";
-      continue;
+  if (online) {
+    // 名前はサーバが配る。CPU を動かすのもサーバなので、こちらにボットは要らない
+    seatNames = online.names.slice();
+    seatHuman = online.humans.slice();
+  } else {
+    seatHuman = [];
+    const cpus = lobby.members.filter((m) => m.kind === "cpu");
+    let ci = 0;
+    for (let seat = 0; seat < players; seat++) {
+      if (seat === mySeat) {
+        seatNames[seat] = lobby.name || "あなた";
+        continue;
+      }
+      const m = cpus[ci++] || { level: 1 };
+      seatNames[seat] = LEVEL_NAMES[m.level];
+      levels |= (m.level & 0b11) << (seat * 2);
     }
-    const m = cpus[ci++] || { level: 1 };
-    seatNames[seat] = LEVEL_NAMES[m.level];
-    levels |= (m.level & 0b11) << (seat * 2);
   }
   if (watching) {
     for (let seat = 0; seat < players; seat++) seatNames[seat] = `CPU ${seat}`;
@@ -3470,7 +3808,8 @@ function newGame(newSeed) {
   refreshState();
   drawBoard();
   render();
-  scheduleBot();
+  // オンラインでは CPU もサーバが動かす。ここで回すと二重に指してずれる
+  if (!online) scheduleBot();
 }
 
 // 実時間の注入。エンジンは自分で時計を読まないので、ここで流し込まないと
@@ -3600,7 +3939,7 @@ for (const [k, id] of ["seed", "seed2", "seed3", "seed4"].entries()) {
   document.getElementById(id).value = randomSeed(k);
 }
 /** この版の目印。画面に出して、どの版が動いているかを一目で分かるようにする */
-const BUILD = "v6";
+const BUILD = "v8";
 
 /**
  * 起動。

@@ -813,6 +813,44 @@ impl Game {
     // 行動の適用
     // =====================================================================
 
+    /// その手を **今この局面で適用してよいか**。
+    ///
+    /// `apply` は非合法手で panic するので、外から手が来る場所（オンライン対戦のサーバ）では
+    /// 必ずここを先に通す。release では `panic = "abort"` なので、
+    /// 撥ねそこねると process ごと落ちる。
+    pub fn can_apply(&self, a: &Action) -> bool {
+        if self.winner.is_some() {
+            return false;
+        }
+        match a {
+            Action::Discard(b) => {
+                matches!(self.prompt, Prompt::Discard)
+                    && bundle_total(b) as usize == self.discard_pending[self.to_act as usize] as usize
+                    && bundle_contains(&self.players[self.to_act as usize].hand, b)
+            }
+            Action::OfferTrade { give, want } | Action::CounterOffer { give, want }
+            | Action::CounterAlt { give, want } => {
+                let ok_shape = bundle_total(give) > 0
+                    && bundle_total(want) > 0
+                    && (0..NUM_RESOURCES).all(|i| give[i] == 0 || want[i] == 0)
+                    && bundle_contains(&self.players[self.to_act as usize].hand, give);
+                if !ok_shape || !self.negotiation_open() {
+                    return false;
+                }
+                match a {
+                    Action::OfferTrade { .. } => {
+                        matches!(self.prompt, Prompt::PlayTurn) && self.cfg.domestic_trade && self.rolled
+                    }
+                    _ => matches!(self.prompt, Prompt::DecideTrade),
+                }
+            }
+            Action::CounterAltRemove(_) => {
+                matches!(self.prompt, Prompt::DecideTrade) && self.negotiation_open()
+            }
+            other => self.legal_actions().contains(other),
+        }
+    }
+
     pub fn apply(&mut self, a: Action) -> ActionRecord {
         self.apply_forced(a, Forced::No)
     }

@@ -1,0 +1,9 @@
+[package]
+name = "catan-server"
+version.workspace = true
+edition.workspace = true
+
+# 外部依存ゼロ。HTTP も SSE も手で書く（このプロジェクトの方針に合わせる）
+[dependencies]
+catan-core = { path = "../catan-core" }
+catan-ai = { path = "../catan-ai" }

@@ -1,0 +1,195 @@
+//! 最小限の HTTP/1.1。外部の依存を入れない方針なので手で書く。
+//!
+//! 必要なのは 3 つだけ:
+//!   ・静的ファイルを配る
+//!   ・小さな JSON を受け取って返す
+//!   ・**繋ぎっぱなしにして書き足す**（SSE。オンライン対戦の配信に使う）
+//!
+//! ⛔ 汎用のサーバにはしない。想定は「身内で遊ぶ間だけ立てる」用途。
+
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpStream;
+
+pub struct Request {
+    pub method: String,
+    pub path: String,
+    pub query: HashMap<String, String>,
+    pub body: String,
+}
+
+/// 1 本の要求を読む。読み切れなければ `None`
+pub fn read_request(stream: &TcpStream) -> Option<Request> {
+    let mut r = BufReader::new(stream.try_clone().ok()?);
+    let mut line = String::new();
+    if r.read_line(&mut line).ok()? == 0 {
+        return None;
+    }
+    let mut it = line.split_whitespace();
+    let method = it.next()?.to_string();
+    let target = it.next()?.to_string();
+
+    let mut len = 0usize;
+    loop {
+        let mut h = String::new();
+        if r.read_line(&mut h).ok()? == 0 {
+            break;
+        }
+        let h = h.trim_end();
+        if h.is_empty() {
+            break;
+        }
+        if let Some(v) = h.strip_prefix("Content-Length:") {
+            len = v.trim().parse().unwrap_or(0);
+        }
+    }
+
+    let mut body = vec![0u8; len];
+    if len > 0 && r.read_exact(&mut body).is_err() {
+        return None;
+    }
+
+    let (path, qs) = match target.split_once('?') {
+        Some((p, q)) => (p.to_string(), q.to_string()),
+        None => (target, String::new()),
+    };
+    let mut query = HashMap::new();
+    for kv in qs.split('&').filter(|s| !s.is_empty()) {
+        let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
+        query.insert(url_decode(k), url_decode(v));
+    }
+
+    Some(Request {
+        method,
+        path,
+        query,
+        body: String::from_utf8_lossy(&body).into_owned(),
+    })
+}
+
+fn url_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'%' if i + 2 < b.len() => {
+                let h = |c: u8| (c as char).to_digit(16).unwrap_or(0) as u8;
+                out.push(h(b[i + 1]) * 16 + h(b[i + 2]));
+                i += 3;
+            }
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            c => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+pub fn send(stream: &mut TcpStream, status: &str, ctype: &str, body: &[u8]) {
+    let head = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\n\
+         Cache-Control: no-store\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(body);
+    let _ = stream.flush();
+}
+
+pub fn send_json(stream: &mut TcpStream, body: &str) {
+    send(stream, "200 OK", "application/json; charset=utf-8", body.as_bytes());
+}
+
+pub fn send_err(stream: &mut TcpStream, status: &str, msg: &str) {
+    send(stream, status, "application/json; charset=utf-8",
+         format!("{{\"error\":\"{}\"}}", esc(msg)).as_bytes());
+}
+
+/// SSE の口を開ける。ここから先は `push` で書き足していく
+pub fn open_sse(stream: &mut TcpStream) -> bool {
+    let head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\n\
+                Cache-Control: no-store\r\nConnection: keep-alive\r\n\
+                X-Accel-Buffering: no\r\n\r\n";
+    stream.write_all(head.as_bytes()).is_ok() && stream.flush().is_ok()
+}
+
+pub fn push(stream: &mut TcpStream, data: &str) -> bool {
+    // 改行を含むと SSE の区切りと衝突する。1 行の JSON しか送らない約束にする
+    let msg = format!("data: {}\n\n", data.replace('\n', " "));
+    stream.write_all(msg.as_bytes()).is_ok() && stream.flush().is_ok()
+}
+
+/// JSON の文字列に入れてよい形に直す
+pub fn esc(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 8);
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// 受け取る JSON はこちらが決めた形しか来ない。素朴に値だけ拾う。
+/// ⚠ 汎用のパーサではない（入れ子や配列は扱わない）
+pub fn field<'a>(body: &'a str, key: &str) -> Option<&'a str> {
+    let pat = format!("\"{key}\"");
+    let i = body.find(&pat)? + pat.len();
+    let rest = &body[i..];
+    let c = rest.find(':')? + 1;
+    let rest = rest[c..].trim_start();
+    if let Some(r) = rest.strip_prefix('"') {
+        let end = r.find('"')?;
+        Some(&r[..end])
+    } else {
+        let end = rest
+            .find(|c: char| c == ',' || c == '}' || c.is_whitespace())
+            .unwrap_or(rest.len());
+        Some(&rest[..end])
+    }
+}
+
+/// `"g":[1,0,2,0,0]` のような 5 要素の配列だけ拾う（資源の束）
+pub fn field_bundle(body: &str, key: &str) -> Option<[u8; 5]> {
+    let pat = format!("\"{key}\"");
+    let i = body.find(&pat)? + pat.len();
+    let rest = &body[i..];
+    let a = rest.find('[')? + 1;
+    let b = rest.find(']')?;
+    let mut out = [0u8; 5];
+    for (k, part) in rest[a..b].split(',').enumerate() {
+        if k >= 5 {
+            return None;
+        }
+        out[k] = part.trim().parse().ok()?;
+    }
+    Some(out)
+}
+
+pub fn field_num(body: &str, key: &str) -> Option<i64> {
+    field(body, key)?.parse().ok()
+}
+
+pub fn mime_of(path: &str) -> &'static str {
+    match path.rsplit('.').next().unwrap_or("") {
+        "html" => "text/html; charset=utf-8",
+        "js" => "text/javascript; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "wasm" => "application/wasm",
+        "json" => "application/json; charset=utf-8",
+        "svg" => "image/svg+xml",
+        _ => "application/octet-stream",
+    }
+}

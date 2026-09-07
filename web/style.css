@@ -1523,3 +1523,27 @@ aside > div .chip, #drawer .chip { font-size: 12px; padding: 1px 7px 1px 4px; ga
   color: #cdfaf2; background: rgba(69, 211, 192, .18); border-color: var(--accent-dim);
 }
 #result .rhome:hover { background: rgba(69, 211, 192, .28); }
+
+/* --- 待機所のオンライン欄 --- */
+#honline { margin-top: 6px; }
+.honl { display: flex; flex-direction: column; gap: 8px; }
+.hjoin { display: flex; gap: 8px; }
+.hjoin input {
+  flex: 1 1 auto; min-width: 0; padding: 9px 13px; font-size: 15px;
+  letter-spacing: .28em; text-transform: uppercase; border-radius: 10px;
+  color: #16232e; background: #fff; border: 1px solid rgba(16, 34, 48, .2);
+}
+.hbtn {
+  padding: 10px 16px; font-size: 14px; font-weight: 700; border-radius: 10px;
+  color: #06231f; background: #45d3c0; border: 1px solid #2aa294;
+}
+.hbtn:hover { background: #5ee0ce; }
+.hbtn.small { margin-top: 8px; padding: 7px 12px; font-size: 12.5px;
+  color: #4c5f70; background: rgba(16, 34, 48, .06); border-color: rgba(16, 34, 48, .16); }
+/* 合言葉は読み上げて伝えるものなので、字間を空けて大きく出す */
+.hcode { margin: 4px 0 10px; text-align: center; font-size: 13px; color: #4c5f70; }
+.hcode b { font-size: 26px; letter-spacing: .3em; color: #16232e; margin-left: 8px; }
+.herr {
+  margin-bottom: 10px; padding: 9px 12px; border-radius: 10px; font-size: 13px;
+  color: #8c1d0a; background: rgba(208, 42, 22, .12); border: 1px solid rgba(208, 42, 22, .3);
+}
