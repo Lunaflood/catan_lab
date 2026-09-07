@@ -112,9 +112,19 @@ pub fn send_err(stream: &mut TcpStream, status: &str, msg: &str) {
 }
 
 /// SSE の口を開ける。ここから先は `push` で書き足していく
+///
+/// 🔴 **`Transfer-Encoding: chunked` を必ず付ける**。
+///
+/// 長さの分からない本文を `keep-alive` で流すのに区切りを書かないと、HTTP としては
+/// 「どこで本文が終わるのか誰にも分からない」電文になる。ブラウザに直結している間は
+/// 接続が閉じるまで読んでくれるので**動いてしまう**が、間に中継（cloudflared など）が
+/// 入ると、中継は本文の終わりを待ち続けて何も転送しない。結果、
+/// **家の中では動くのに外の友達とだけ繋がらない**。実際にこれで
+/// 「参加者が見えない・はじめるを押しても始まらない」が起きた。
 pub fn open_sse(stream: &mut TcpStream) -> bool {
     let head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\n\
                 Cache-Control: no-store\r\nConnection: keep-alive\r\n\
+                Transfer-Encoding: chunked\r\n\
                 X-Accel-Buffering: no\r\n\r\n";
     stream.write_all(head.as_bytes()).is_ok() && stream.flush().is_ok()
 }
@@ -122,7 +132,9 @@ pub fn open_sse(stream: &mut TcpStream) -> bool {
 pub fn push(stream: &mut TcpStream, data: &str) -> bool {
     // 改行を含むと SSE の区切りと衝突する。1 行の JSON しか送らない約束にする
     let msg = format!("data: {}\n\n", data.replace('\n', " "));
-    stream.write_all(msg.as_bytes()).is_ok() && stream.flush().is_ok()
+    // 塊の大きさは**バイト数**（名前に日本語が入ると文字数とはずれる）
+    let chunk = format!("{:X}\r\n{}\r\n", msg.len(), msg);
+    stream.write_all(chunk.as_bytes()).is_ok() && stream.flush().is_ok()
 }
 
 /// JSON の文字列に入れてよい形に直す

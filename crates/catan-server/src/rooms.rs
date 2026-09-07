@@ -147,21 +147,40 @@ impl Room {
         }
     }
 
-    /// 待機所の様子。席は開始時に決まるので、ここでは並びだけ知らせる
-    pub fn lobby_json(&self) -> String {
+    /// 待機所の様子。席は開始時に決まるので、ここでは並びだけ知らせる。
+    ///
+    /// `you` は受け取る人が一覧の何番目か。**誰が自分かは人によって違う**ので、
+    /// 全員に同じ一通を配ると「入れているのは自分か友達か」を画面で示せない。
+    /// 部屋を立てた人は必ず 0 番（`members` の先頭）。
+    pub fn lobby_json_for(&self, you: usize) -> String {
         let names: Vec<String> = self
             .members
             .iter()
-            .map(|m| format!("{{\"name\":\"{}\"}}", crate::http::esc(&m.name)))
+            .map(|m| {
+                format!(
+                    "{{\"name\":\"{}\",\"here\":{}}}",
+                    crate::http::esc(&m.name),
+                    !m.feeds.is_empty()
+                )
+            })
             .collect();
         let cpus: Vec<String> = self.cpus.iter().map(|l| l.to_string()).collect();
         format!(
-            "{{\"t\":\"lobby\",\"code\":\"{}\",\"members\":[{}],\"cpus\":[{}],\"players\":{}}}",
+            "{{\"t\":\"lobby\",\"code\":\"{}\",\"members\":[{}],\"cpus\":[{}],\"players\":{},\"you\":{}}}",
             self.code,
             names.join(","),
             cpus.join(","),
-            self.players()
+            self.players(),
+            you
         )
+    }
+
+    /// 待機所の様子を全員へ。**一人ずつ違う一通**を配る（`you` が違うため）
+    pub fn send_lobby(&mut self) {
+        for i in 0..self.members.len() {
+            let msg = self.lobby_json_for(i);
+            self.send_to(i, &msg);
+        }
     }
 
     // ---------------------------------------------------------------- 対局
@@ -480,7 +499,6 @@ impl Room {
             m.seat = None;
         }
         self.broadcast("{\"t\":\"home\"}");
-        let l = self.lobby_json();
-        self.broadcast(&l);
+        self.send_lobby();
     }
 }

@@ -951,3 +951,40 @@ header { display: none !important; }
   bottom: 112px !important;
   max-width: calc(100% - 24px);
 }
+
+/* ---------------------------------------------------------------- 部屋の様子
+   「入れているのか」を字で言い切る。名前が並んでいるだけでは、
+   それが入った人なのか席の枠なのか読めない。 */
+#home .hlive {
+  margin: 10px 0 4px; padding: 9px 12px; border-radius: 8px;
+  font-size: 13px; line-height: 1.6;
+}
+#home .hlive.ok { background: rgba(40,150,90,.16); color: #9fe9c0; }
+#home .hlive.ok::before { content: "● "; color: #46d39a; }
+#home .hlive.ng { background: rgba(200,60,50,.18); color: #ffc4bb; }
+#home .hlive.ng::before { content: "● "; color: #ff6a5c; }
+#home .hseat.in .who { display: flex; align-items: center; gap: 6px; }
+#home .hseat.away { opacity: .55; }
+#home .htag {
+  font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+  background: rgba(255,255,255,.14); color: #dbe7f2; letter-spacing: .04em;
+}
+#home .htag.you { background: #285fbd; color: #fff; }
+#home .hstate { margin-left: auto; font-size: 11.5px; font-weight: 700; }
+#home .hstate.ok { color: #46d39a; }
+#home .hstate.ng { color: #ffb36a; }
+#home .hcount {
+  margin-top: 8px; font-size: 12.5px; color: #9fb0c0; text-align: center;
+}
+#home .hcount b { color: #e6eef6; font-size: 14px; }
+
+/* ---------------------------------------------------------------- 待機所の収まり
+   🔴 部屋の顔ぶれが増えると待機所が画面より高くなり、
+   **一番押してほしい「はじめる」が画面の外に出て押せなくなっていた**。
+   （実際に「リンクを送っても始められない」で踏んだ） */
+#app ~ #home .homecard, #home .homecard { margin: auto; }
+#home .hstart {
+  position: sticky; bottom: 0; z-index: 3;
+  /* 貼り付いた時に下の行が透けないよう、地色を敷く */
+  box-shadow: 0 8px 20px rgba(255,171,46,.3), 0 -14px 16px 10px rgba(255,255,255,.92);
+}

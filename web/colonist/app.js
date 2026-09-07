@@ -3956,6 +3956,10 @@ let net = {
   players: 4,
   es: null,
   err: "",
+  /** 部屋の様子を配る線が生きているか。画面に印を出すために持つ */
+  live: false,
+  /** 一覧の何番目が自分か（サーバが人ごとに教える） */
+  me: -1,
 };
 
 async function api(path, body) {
@@ -4016,8 +4020,20 @@ function netApply(m) {
 
 function netOpen() {
   if (net.es) net.es.close();
+  net.live = false;
   net.es = new EventSource(`api/events?room=${net.room}&token=${net.token}`);
+  // 部屋の様子は**この線でしか届かない**。繋がっているかどうかを画面に出す。
+  // ここが黙って死ぬと「参加が見えない」「はじめるを押しても始まらない」になる
+  net.es.onopen = () => {
+    net.live = true;
+    net.err = "";
+    if (!document.getElementById("home").hidden) renderHome();
+  };
   net.es.onmessage = (ev) => {
+    if (!net.live) {
+      net.live = true;
+      net.err = "";
+    }
     let m;
     try {
       m = JSON.parse(ev.data);
@@ -4029,6 +4045,7 @@ function netOpen() {
         net.members = m.members || [];
         net.cpus = m.cpus || [];
         net.players = m.players || 4;
+        net.me = m.you != null ? m.you : -1;
         if (!document.getElementById("home").hidden) renderHome();
         break;
       case "start": {
@@ -4060,8 +4077,10 @@ function netOpen() {
     }
   };
   net.es.onerror = () => {
+    net.live = false;
     net.err = "サーバとの接続が切れました";
-    renderPrompt();
+    if (!document.getElementById("home").hidden) renderHome();
+    else renderPrompt();
   };
 }
 
@@ -4091,7 +4110,7 @@ async function netJoin(code) {
 
 function netLeave() {
   if (net.es) net.es.close();
-  net = { on: false, room: null, token: null, seat: -1, members: [], cpus: [], players: 4, es: null, err: "" };
+  net = { on: false, room: null, token: null, seat: -1, members: [], cpus: [], players: 4, es: null, err: "", live: false, me: -1 };
 }
 
 /* ---------------------------------------------------------------- ホーム（待機所） */
@@ -4280,9 +4299,22 @@ function renderOnlineBox() {
   const privateHost =
     host === "localhost" || host === "127.0.0.1" ||
     /^192\.168\.|^10\.|^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  // ★ 「誰が本当に入れているか」を字で言い切る。
+  //   名前が並んでいるだけだと、それが「入った人」なのか「席の枠」なのか読めない。
+  //   `here` はサーバがその人の配信の口を持っているか＝**本当に繋がっているか**
   const who = net.members
-    .map((m, i) => `<div class="hseat" style="--c:${PLAYER_INK[i % 4]}">
-        <span class="sw"></span><span class="who">${escapeHtml(m.name)}</span></div>`)
+    .map((m, i) => {
+      const you = i === net.me;
+      const tags = [];
+      if (i === 0) tags.push(`<span class="htag host">部屋主</span>`);
+      if (you) tags.push(`<span class="htag you">あなた</span>`);
+      const here = m.here !== false;
+      return `<div class="hseat in${here ? "" : " away"}" style="--c:${PLAYER_INK[i % 4]}">
+        <span class="sw"></span>
+        <span class="who">${escapeHtml(m.name)}${tags.join("")}</span>
+        <span class="hstate ${here ? "ok" : "ng"}">${here ? "入室ずみ" : "接続待ち"}</span>
+      </div>`;
+    })
     .join("");
   const cpus = net.cpus
     .map((lv, i) => `<div class="hseat" style="--c:${PLAYER_INK[(net.members.length + i) % 4]}">
@@ -4291,6 +4323,12 @@ function renderOnlineBox() {
           (nm, k) => `<option value="${k}"${k === lv ? " selected" : ""}>${nm}</option>`
         ).join("")}</select></div>`)
     .join("");
+  // 部屋そのものが生きているか。ここが赤いと、何を押しても相手に届かない
+  const linkState = net.live
+    ? `<div class="hlive ok">つながっています　── 友達が入ると、下の一覧にすぐ出ます</div>`
+    : `<div class="hlive ng">サーバとつながっていません。<b>この状態では「はじめる」を押しても始まりません。</b><br>
+         ページを開き直してください。</div>`;
+  const count = `<div class="hcount">人 <b>${net.members.length}</b> 人　＋　CPU <b>${net.cpus.length}</b> 体　＝　<b>${net.players}</b> 人で対戦</div>`;
   box.insertAdjacentHTML(
     "beforeend",
     `<div class="hshare">
@@ -4305,7 +4343,8 @@ function renderOnlineBox() {
            : ""
        }
      </div>
-     <div class="hlabel hsub">この部屋の顔ぶれ</div>${who}${cpus}
+     ${linkState}
+     <div class="hlabel hsub">この部屋の顔ぶれ</div>${who}${cpus}${count}
      <button id="hleave" class="hbtn small">部屋を出る</button>`
   );
   const copy = box.querySelector("#hcopy");
@@ -4625,8 +4664,10 @@ function ensureHome() {
     document.body.insertBefore(home, document.body.firstChild);
   }
   if (!document.getElementById("hstart")) home.innerHTML = HOME_HTML;
+  // 🔴 align-items:center のままだと、中身が画面より高くなった時に**上が切れて
+  //    そこへ戻れない**。margin:auto と組ませて、収まる時は中央・溢れる時は素直に流す
   home.style.cssText =
-    "position:fixed;inset:0;z-index:200;display:flex;align-items:center;" +
+    "position:fixed;inset:0;z-index:200;display:flex;align-items:flex-start;" +
     "justify-content:center;padding:24px;overflow-y:auto";
   return home;
 }
@@ -4636,11 +4677,14 @@ function ensureHomeStyle() {
   if (getComputedStyle(document.getElementById("home")).position === "fixed") return;
   const st = document.createElement("style");
   st.textContent = `
-    #home{position:fixed;inset:0;z-index:200;display:flex;align-items:center;
+    /* 🔴 align-items:center のまま中身が画面より高くなると、上が切れたうえに
+       スクロールしても戻れない。margin:auto なら、収まる時は中央・
+       溢れる時は上端から素直に流れる */
+    #home{position:fixed;inset:0;z-index:200;display:flex;align-items:flex-start;
       justify-content:center;padding:24px;overflow-y:auto}
     #home[hidden]{display:none}
-    #home .homecard{width:min(520px,100%);background:rgba(255,255,255,.95);border-radius:20px;
-      padding:26px;color:#16232e}
+    #home .homecard{width:min(520px,100%);margin:auto;background:rgba(255,255,255,.95);
+      border-radius:20px;padding:26px;color:#16232e}
     #home h1{margin:0 0 20px;font-size:22px;letter-spacing:.34em;text-align:center}
     #home .hrow{display:flex;align-items:center;gap:14px;margin-bottom:14px}
     #home .hlabel{width:108px;font-size:12px;font-weight:700;color:#4c5f70}
@@ -4649,8 +4693,12 @@ function ensureHomeStyle() {
     .hseat{display:flex;align-items:center;gap:10px;padding:9px 12px;margin-bottom:7px;
       border-radius:12px;background:rgba(16,34,48,.06)}
     .hseat .who{flex:1;font-weight:700}
+    /* 🔴 一番押してほしいボタンを画面の外に置かない。
+       部屋の顔ぶれが増えると下へ押し出され、実際に**画面外に出て押せなくなった**。
+       貼り付けて、いつでも見えるようにする */
     .hstart{width:100%;margin-top:20px;padding:13px;font-size:17px;font-weight:800;
-      border-radius:12px;background:#ffab2e;color:#2a1b04;border:0}
+      border-radius:12px;background:#ffab2e;color:#2a1b04;border:0;
+      position:sticky;bottom:0;z-index:3;box-shadow:0 -10px 18px rgba(255,255,255,.95)}
     .hnote{margin-top:10px;font-size:11.5px;color:#56687a;text-align:center}`;
   document.head.appendChild(st);
 }

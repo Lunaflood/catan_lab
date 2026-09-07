@@ -152,8 +152,7 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
             room.members.push(Member { token: token.clone(), name, feeds: Vec::new(), seat: None });
             let want = room.players().max(room.members.len());
             room.balance(want);
-            let l = room.lobby_json();
-            room.broadcast(&l);
+            room.send_lobby();
             http::send_json(stream, &format!("{{\"room\":\"{code}\",\"token\":\"{token}\"}}"));
         }
 
@@ -174,8 +173,7 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
                     *slot = lv.clamp(0, 3) as u32;
                 }
             }
-            let l = room.lobby_json();
-            room.broadcast(&l);
+            room.send_lobby();
             http::send_json(stream, "{\"ok\":true}");
         }
 
@@ -256,8 +254,7 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
                 let Some(room) = r.get_mut(&code) else { return };
                 let Some(mi) = room.member_of(&token) else { return };
                 room.members[mi].feeds.push(feed);
-                let l = room.lobby_json();
-                room.send_to(mi, &l);
+                room.send_lobby();
             }
             // 繋ぎっぱなしにする。落ちたら retain で外れる
             loop {
