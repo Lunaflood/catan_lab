@@ -52,6 +52,8 @@ pub struct Room {
     /// 次に CPU を動かしてよい時刻（人が目で追えるよう間を空ける）
     pub bot_at: u128,
     pub last_touch: u128,
+    /// 出来事の順序番号（v2 CPU への配信用）
+    pub evseq: u64,
 }
 
 pub fn now_ms() -> u128 {
@@ -106,6 +108,7 @@ impl Room {
             again: HashSet::new(),
             bot_at: 0,
             last_touch: now_ms(),
+            evseq: 0,
         }
     }
 
@@ -203,13 +206,15 @@ impl Room {
                 } else {
                     let lv = *self.cpus.get(ci).unwrap_or(&1);
                     ci += 1;
-                    Some(bot_for_level(lv, seeds[1] as u64 * 31 + seat as u64))
+                    // CPU へ本番の乱数の種を渡さない。
+                    Some(bot_for_level(lv, 0xC47A_2026 + seat as u64))
                 }
             })
             .collect();
 
         self.seeds = seeds;
         self.game = Some(game);
+        self.evseq = 0;
         self.phase = Phase::Playing;
         self.again.clear();
         self.bot_at = now_ms() + 700;
@@ -261,7 +266,10 @@ impl Room {
         let Some(g) = self.game.as_mut() else {
             return Err("対局が始まっていない");
         };
-        g.apply(a);
+        let before = g.clone();
+        let rec = g.apply(a);
+        self.evseq += 1;
+        catan_ai::harness::notify_seats(&mut self.bots, &before, g, &rec, self.evseq);
         let over = g.is_over();
         let turn = g.turn;
         let to_act = g.to_act;
@@ -359,7 +367,10 @@ impl Room {
         let chosen = bot.decide(&view, &acts);
         let index = acts.iter().position(|a| *a == chosen).unwrap_or(0);
         let a: Action = acts[index];
-        g.apply(a);
+        let before = g.clone();
+        let rec = g.apply(a);
+        self.evseq += 1;
+        catan_ai::harness::notify_seats(&mut self.bots, &before, g, &rec, self.evseq);
         let over = g.is_over();
         let turn = g.turn;
         let to_act = g.to_act;
@@ -423,7 +434,10 @@ impl Room {
                 }
                 let rate = g.board.best_maritime_rate(me, *r);
                 for _ in 0..(give[i] / rate) {
-                    g.apply(Action::MaritimeTrade { give: *r, count: rate, take: queue[qi] });
+                    let before = g.clone();
+                    let rec = g.apply(Action::MaritimeTrade { give: *r, count: rate, take: queue[qi] });
+                    self.evseq += 1;
+                    catan_ai::harness::notify_seats(&mut self.bots, &before, g, &rec, self.evseq);
                     qi += 1;
                 }
             }

@@ -1,0 +1,2 @@
+C:\catan_lab\target\audit\release\catan.exe trial --set enemy_production=-40 --games 480 --seed 850000 --no-time-limit
+RESULT win=0.28542 se=0.02061 vp=7.425 stall=0.0000 games=480

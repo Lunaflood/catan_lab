@@ -752,3 +752,50 @@ fn 積んだ候補だけで返答を確定できる() {
     assert_eq!(t.counters[1][1].unwrap().0, g2);
     assert_ne!(g.to_act, 1, "返答が終わっていない");
 }
+
+/// CPU が返す対案は、必ず**提案者が欲しがっていた資源**を出す物でなければならない。
+///
+/// ここを絞らないと「木が欲しい」と言った相手に「鉄をやるから羊をくれ」と
+/// まったく噛み合わない対案が返り、提案者は断るしかない札で候補欄が埋まる。
+#[test]
+fn 生成される対案は提案者の欲しい資源を必ず含む() {
+    let mut g = ready(GameConfig::default());
+    set_hand(&mut g, 0, [3, 0, 0, 0, 0]); // P0: 木3
+    set_hand(&mut g, 1, [0, 2, 2, 2, 2]); // P1: 木以外を全部持っている
+
+    // P0「木1 出すので 土1 くれ」＝ 欲しいのは土
+    g.apply(Action::OfferTrade {
+        give: [1, 0, 0, 0, 0],
+        want: [0, 1, 0, 0, 0],
+    });
+    assert_eq!(g.prompt, Prompt::DecideTrade);
+
+    let mut seen = 0;
+    for a in g.legal_actions() {
+        if let Action::CounterOffer { give, .. } = a {
+            seen += 1;
+            assert!(
+                give[BRICK] > 0,
+                "提案者が欲しがっていない資源だけの対案が出た: give={give:?}"
+            );
+        }
+    }
+    assert!(seen > 0, "対案の候補が 1 つも作られていない");
+}
+
+/// 提案側（対案ではない方）は今まで通り自由に作れる。上の制限が漏れていないこと。
+#[test]
+fn 提案の生成は絞られていない() {
+    let mut g = ready(GameConfig::default());
+    set_hand(&mut g, 0, [2, 2, 0, 0, 0]);
+    let kinds: Vec<_> = g
+        .legal_actions()
+        .into_iter()
+        .filter_map(|a| match a {
+            Action::OfferTrade { give, .. } => Some(give),
+            _ => None,
+        })
+        .collect();
+    assert!(kinds.iter().any(|g| g[WOOD] > 0), "木を出す提案が無い");
+    assert!(kinds.iter().any(|g| g[BRICK] > 0), "土を出す提案が無い");
+}

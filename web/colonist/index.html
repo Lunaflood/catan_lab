@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>カタン</title>
+<link rel="stylesheet" href="style.css?v=36">
+<link rel="stylesheet" href="colonist.css?v=36">
+</head>
+<body>
+<!-- ホーム（待機所）。ここで人数・相手・名前を決めてから盤に入る。 -->
+<div id="home">
+  <div class="homecard">
+    <h1>カタン</h1>
+
+    <label class="hrow">
+      <span class="hlabel">あなたの名前</span>
+      <input id="myname" type="text" maxlength="12" placeholder="なまえ">
+    </label>
+
+    <div class="hrow">
+      <span class="hlabel">人数</span>
+      <div id="hplayers" class="hseg"></div>
+    </div>
+
+    <div class="hlabel hsub">対戦相手</div>
+    <div id="hseats"></div>
+
+    <button id="hstart" class="hstart">はじめる</button>
+    <div class="hnote" id="hnote"></div>
+  </div>
+</div>
+
+<!--
+  盤面の配置は colonist の実測に合わせてある。
+
+    [左レール 62]  [盤（全面）]                [右カラム 361]
+                   [手札][状態バー][操作ボタン 6 個]
+    最下端に 4px の時間バー
+
+  盤は削らず全面に敷き、UI は**その上に重ねる**。
+-->
+<div id="app" hidden>
+  <!-- 左レール。アイコン 43x43 を 57px 間隔で 4 つだけ -->
+  <div id="rail">
+    <button class="railbtn" id="r-settings" title="設定">
+      <svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zm9 3.5c0-.5 0-1-.1-1.5l2-1.6-2-3.4-2.4 1a8 8 0 00-2.6-1.5L15.5 2h-4l-.4 2.6a8 8 0 00-2.6 1.5l-2.4-1-2 3.4 2 1.6a9 9 0 000 3l-2 1.6 2 3.4 2.4-1a8 8 0 002.6 1.5l.4 2.6h4l.4-2.6a8 8 0 002.6-1.5l2.4 1 2-3.4-2-1.6c.1-.5.1-1 .1-1.5z"/></svg>
+    </button>
+    <button class="railbtn" id="r-rules" title="遊び方">
+      <svg viewBox="0 0 24 24"><path d="M4 4h6a3 3 0 013 3v13a2.5 2.5 0 00-2.5-2H4zm16 0h-6a3 3 0 00-3 3v13a2.5 2.5 0 012.5-2H20z"/></svg>
+    </button>
+    <button class="railbtn" id="r-full" title="全画面">
+      <svg viewBox="0 0 24 24"><path d="M4 9V4h5v2H6v3zm11-5h5v5h-2V6h-3zM4 15h2v3h3v2H4zm14 0h2v5h-5v-2h3z"/></svg>
+    </button>
+    <button class="railbtn" id="r-info" title="この対局について">
+      <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-6h2zm0-8h-2V7h2z"/></svg>
+    </button>
+    <button class="railbtn" id="sfxtoggle" title="効果音を鳴らす／消す">
+      <svg viewBox="0 0 24 24"><path d="M4 9h3l5-4v14l-5-4H4zm12.5-1.5a5 5 0 010 9v-2a3 3 0 000-5z"/></svg>
+    </button>
+  </div>
+
+  <!-- 盤。UI は全部この上に重なる -->
+  <div id="stage">
+    <div id="boardwrap">
+      <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+
+    <!-- 出目。振ったあとも消えず、盤の右下に置きっぱなし -->
+    <div id="dicetray" hidden><div class="tdie" id="td0"></div><div class="tdie" id="td1"></div></div>
+
+    <!-- 盤の中央で大きく転がす演出（既存） -->
+    <div id="rollfx" hidden>
+      <div class="bigdie" id="bd0"></div>
+      <div class="bigdie" id="bd1"></div>
+      <div id="rollsum"></div>
+    </div>
+
+    <!-- 相手からの提案。盤の右上に重ねて出す -->
+    <div id="offers"></div>
+
+    <!-- 捨て札・発展カードの確認など、左下からせり上がるパネル -->
+    <div id="actionbox" hidden></div>
+
+    <!-- 反則の知らせ。左下に一瞬だけ -->
+    <div id="toast" hidden></div>
+
+    <!-- 出目の分布。既定は畳んでおき、矢印で開く -->
+    <div id="distbox">
+      <button id="disttoggle" title="出目の分布を出す／隠す">▾ 出目</button>
+      <div id="rolldist" hidden></div>
+    </div>
+
+    <div id="result" hidden></div>
+
+    <!-- ブロックの確認。押し間違いで勝手に切り替わらないよう一段挟む -->
+    <div id="askbox" hidden></div>
+  </div>
+
+  <!-- 右カラム: できごと / 銀行 / プレイヤー -->
+  <aside id="side">
+    <div id="log" class="beige">
+      <div id="loglines"></div>
+    </div>
+    <div id="bankpanel" class="beige"></div>
+    <div id="players-panel"></div>
+  </aside>
+
+  <!-- 下の帯: 手札（左） / 状態バー / 操作ボタン（右） -->
+  <div id="turnbox">
+    <div id="handbar"></div>
+    <div id="prompt">
+      <span id="promptavatar"></span>
+      <span id="prompttext"></span>
+      <span id="prompttimer"></span>
+    </div>
+    <div id="actions"></div>
+  </div>
+
+  <!-- 画面最下端の時間バー -->
+  <div id="timerbar"><i></i></div>
+
+  <!-- 以下は表に出さないが、既存の処理が参照しているので残す -->
+  <div id="hiddenbits" hidden>
+    <button id="uitoggle">▾</button>
+    <span id="dicebox" class="dice"></span>
+    <button id="logmore" class="mini">詳しく</button>
+    <div id="setupbox">
+      <label>盤 <input id="seed" type="number" value="1" min="0"></label>
+      <label>サイコロ <input id="seed2" type="number" value="1" min="0"></label>
+      <label>発展 <input id="seed3" type="number" value="1" min="0"></label>
+      <label>盗み <input id="seed4" type="number" value="1" min="0"></label>
+      <select id="players"><option value="4" selected>4</option><option value="3">3</option></select>
+      <button id="newgame">新しい対局</button>
+      <button id="watch">CPU同士を観戦</button>
+    </div>
+  </div>
+
+  <!-- 詳細ログ -->
+  <div id="drawer" hidden>
+    <div class="dhead">
+      <button id="dprev" class="nav" title="1 つ前の巡">◀</button>
+      <span id="dround">最新</span>
+      <button id="dnext" class="nav" title="次の巡">▶</button>
+      <button id="dlatest" class="mini">最新</button>
+      <button id="drawerclose" class="mini">閉じる</button>
+    </div>
+    <div id="dcols"></div>
+  </div>
+</div>
+<script type="module" src="app.js?v=36"></script>
+</body>
+</html>

@@ -959,11 +959,13 @@ function animSteal(L) {
   if (!L.stolen || L.victimNode === null) return;
   const [sx, sy] = nodeXY(L.victimNode);
   const [tx, ty] = tileXY(L.tile);
-  const t = TERRAIN[L.stolen];
+  // 第三者の席には種類が伝わらない（"HIDDEN"）。裏向きの札を飛ばす
+  const hidden = L.stolen === "HIDDEN";
+  const t = hidden ? { b: "#232a36", light: "#7b8494" } : TERRAIN[L.stolen];
   const g = fxAdd(`
     <g transform="translate(${tx},${ty - 10})">
       <rect x="-14" y="-19" width="28" height="38" rx="6" fill="${t.b}" stroke="${t.light}" stroke-width="1.8"/>
-      <g transform="scale(.85)">${smallGlyph(L.stolen)}</g>
+      ${hidden ? '<rect x="-9" y="-14" width="18" height="28" rx="3" fill="none" stroke="#7b8494" stroke-width="1.2" stroke-dasharray="2 2"/>' : `<g transform="scale(.85)">${smallGlyph(L.stolen)}</g>`}
     </g>`);
   fxMove(g, sx, sy - 14, tx, ty - 10, 700, "cubic-bezier(.3,.9,.4,1)");
   setTimeout(() => { g.style.transition = "opacity .35s"; g.style.opacity = "0"; }, 720);

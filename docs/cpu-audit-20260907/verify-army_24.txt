@@ -1,0 +1,4 @@
+target/audit/release/catan.exe trial --set army=24 --games 2400 --seed 970000 --no-time-limit
+RESULT win=0.22958 se=0.00858 vp=7.123 stall=0.0000 games=2400
+
+seconds=278.62944889068604

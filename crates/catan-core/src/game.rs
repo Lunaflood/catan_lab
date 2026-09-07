@@ -96,6 +96,8 @@ pub struct TradeState {
     /// 各プレイヤーが返した対案の候補。`(その人が出す, その人が欲しい)`。
     /// 「木か土ならいい」のように複数並べられる（[`MAX_COUNTER_ALTS`] 本まで）。
     pub counters: [[Option<(Bundle, Bundle)>; MAX_COUNTER_ALTS]; MAX_PLAYERS],
+    /// もう諾否を答えた席。順番を席順から外すので、人数の数だけでは足りない
+    pub responded: [bool; MAX_PLAYERS],
     pub answered: u8,
 }
 
@@ -124,6 +126,14 @@ pub struct GameConfig {
     /// `legal_actions` が返す廃棄候補の上限。超える場合は代表例に間引く。
     /// `apply` は上限に関係なく任意の合法な廃棄を受け付ける。
     pub max_discard_actions: usize,
+    /// 提案の諾否を**最後に回す席**（ビットで指定。bit0 = 席0）。
+    ///
+    /// ここに入れた席は、他の全員が答え終わってから聞かれる。
+    /// 人間の席を入れる想定 ── CPU は即答するので、人間が答える時点で
+    /// **他全員の返事が出そろっている**（＝一斉に聞かれたのと同じ見え方になる）。
+    /// 0 なら従来どおり席順。⚠ 自己対戦（全員 CPU）は 0 のままなので、
+    /// 既存の対戦成績・テストの再現性は変わらない。
+    pub answer_last_mask: u8,
     /// 自動生成する提案に **複数種類の束** を含めるか。
     ///
     /// 公式ルールに枚数の制限は無い（禁じられているのは同種を両側に置くことだけ）。
@@ -151,6 +161,7 @@ impl Default for GameConfig {
             max_generated_offers: 200,
             wide_offers: true,
             max_discard_actions: 64,
+            answer_last_mask: 0,
             turn_time_limit_ms: Some(2 * 60 * 1000),
             // 既定は決定的な仮想時計。2 分 ÷ 500ms = 1 手番あたり 240 行動ぶんの
             // 交渉予算になり、通常の対局では絶対に当たらないが停止性は保証される。
@@ -168,7 +179,7 @@ pub enum Forced {
     Steal(Option<Resource>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Game {
     pub cfg: GameConfig,
     pub board: Board,
@@ -327,6 +338,28 @@ impl Game {
     #[inline]
     fn next_player(&self, p: PlayerId) -> PlayerId {
         (p + 1) % self.num_players
+    }
+
+    /// 次に諾否を聞く相手。
+    /// まだ答えていない席のうち、`answer_last_mask` に**入っていない**席を先に回し、
+    /// 入っている席（人間）は最後に残す。全員答え終わっていれば `None`。
+    fn next_responder(&self, t: &TradeState) -> Option<PlayerId> {
+        let n = self.num_players;
+        let mut last: Option<PlayerId> = None;
+        for k in 1..n {
+            let p = (t.proposer + k) % n;
+            if t.responded[p as usize] {
+                continue;
+            }
+            if self.cfg.answer_last_mask & (1 << p) != 0 {
+                if last.is_none() {
+                    last = Some(p);
+                }
+                continue;
+            }
+            return Some(p);
+        }
+        last
     }
 
     // =====================================================================
@@ -627,6 +660,17 @@ impl Game {
     /// 本気の交易 AI はここに頼らず自前で `OfferTrade` / `CounterOffer` を組み立てる想定。
     fn gen_offers(&self, p: PlayerId, out: &mut Vec<Action>, counter: bool) {
         let hand = self.players[p as usize].hand;
+        // 対案は「相手が欲しがっていた資源」を必ず 1 枚は出す物に限る。
+        //
+        // ここを絞らないと、木が欲しくて出した提案に「鉄をやるから羊をくれ」と
+        // まったく噛み合わない対案が返る。提案者から見れば話が繋がっておらず、
+        // 断るしかない札が候補欄を埋めるだけになる。
+        // 交渉は「相手の要求に応じる姿勢を見せて、こちらの取り分を釣り上げる」もの。
+        let need: Bundle = if counter {
+            self.trade.map(|t| t.want).unwrap_or(EMPTY)
+        } else {
+            EMPTY
+        };
         let mut made = 0;
         let mut push = |give: Bundle, want: Bundle, made: &mut usize| -> bool {
             if *made >= self.cfg.max_generated_offers {
@@ -634,6 +678,10 @@ impl Game {
             }
             // 一度断られた条件は出し直さない（対案は別の場面なので対象外）
             if !counter && self.offer_was_rejected(&give, &want) {
+                return true;
+            }
+            // 相手の欲しい物にかすりもしない対案は作らない
+            if need != EMPTY && !RESOURCES.iter().any(|r| need[r.idx()] > 0 && give[r.idx()] > 0) {
                 return true;
             }
             out.push(if counter {
@@ -1053,10 +1101,19 @@ impl Game {
                     responder: self.next_player(actor),
                     accepted: [false; MAX_PLAYERS],
                     counters: [[None; MAX_COUNTER_ALTS]; MAX_PLAYERS],
+                    responded: [false; MAX_PLAYERS],
                     answered: 0,
                 });
+                // 最初に聞く相手。人間は最後に回す（`answer_last_mask`）
+                let first = {
+                    let t = self.trade.expect("いま入れた");
+                    self.next_responder(&t).expect("提案には必ず相手がいる")
+                };
+                if let Some(t) = self.trade.as_mut() {
+                    t.responder = first;
+                }
                 self.prompt = Prompt::DecideTrade;
-                self.to_act = self.next_player(actor);
+                self.to_act = first;
             }
 
             // 積んだ候補を取り消す。返答はまだ終わっていないので、いつでも戻せる
@@ -1099,6 +1156,7 @@ impl Game {
                     }
                     _ => {}
                 }
+                t.responded[actor as usize] = true;
                 t.answered += 1;
                 // 全員の返答を待ってから提案者が相手を選ぶ。
                 // 「最初に承諾した人と成立」にすると、速いだけの相手が得をして
@@ -1118,7 +1176,8 @@ impl Game {
                         self.prompt = Prompt::PlayTurn;
                     }
                 } else {
-                    let nxt = self.next_player(t.responder);
+                    // まだ答えていない相手のうち、人間でない席を先に回す
+                    let nxt = self.next_responder(&t).expect("残りがいるはず");
                     t.responder = nxt;
                     self.trade = Some(t);
                     self.to_act = nxt;

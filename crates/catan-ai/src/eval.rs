@@ -392,6 +392,16 @@ pub fn threats(g: &Game, w: &EvalWeights) -> [f32; MAX_PLAYERS] {
     out
 }
 
+/// 公開点による脅威度に、推定由来の上乗せ（勝利ハザード等）を足した版。
+/// v2 エージェントが使う。旧ボットは [`threats`] のまま。
+pub fn threats_bonus(g: &Game, w: &EvalWeights, bonus: &[f32; MAX_PLAYERS]) -> [f32; MAX_PLAYERS] {
+    let mut out = threats(g, w);
+    for q in 0..g.n() {
+        out[q] += bonus[q];
+    }
+    out
+}
+
 #[inline]
 fn affords(hand: &Bundle, cost: &Bundle) -> bool {
     (0..NUM_RESOURCES).all(|i| hand[i] >= cost[i])

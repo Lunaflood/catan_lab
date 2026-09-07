@@ -1,0 +1,65 @@
+{
+  "results": [
+    {
+      "seed": 1,
+      "players": 4,
+      "steps": 1157,
+      "turn": 88,
+      "winner": 3
+    },
+    {
+      "seed": 2,
+      "players": 3,
+      "steps": 434,
+      "turn": 74,
+      "winner": 1
+    },
+    {
+      "seed": 3,
+      "players": 4,
+      "steps": 1003,
+      "turn": 63,
+      "winner": 2
+    },
+    {
+      "seed": 4,
+      "players": 3,
+      "steps": 506,
+      "turn": 89,
+      "winner": 1
+    },
+    {
+      "seed": 5,
+      "players": 4,
+      "steps": 1178,
+      "turn": 96,
+      "winner": 3
+    },
+    {
+      "seed": 6,
+      "players": 3,
+      "steps": 493,
+      "turn": 76,
+      "winner": 0
+    },
+    {
+      "seed": 7,
+      "players": 4,
+      "steps": 546,
+      "turn": 47,
+      "winner": 2
+    },
+    {
+      "seed": 8,
+      "players": 3,
+      "steps": 384,
+      "turn": 59,
+      "winner": 1
+    }
+  ],
+  "decisionMs": {
+    "median": 0.10900000000000887,
+    "p95": 2.0837999999999965,
+    "max": 21.905099999999948
+  }
+}

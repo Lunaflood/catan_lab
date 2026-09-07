@@ -176,7 +176,7 @@ impl Default for BoardConfig {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Board {
     // --- 地図（ゲーム中は不変） ---
     pub tile_resource: [Option<Resource>; NUM_TILES],

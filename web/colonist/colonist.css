@@ -1,0 +1,953 @@
+/* ===========================================================================
+   colonist.io の実測値で組んだ配置と配色。
+   数値はすべて 1920x911 のデスクトップ版から採取したもの（colonist-ui-notes.md）。
+   このファイルは style.css の**後**に読み込み、骨格と色だけを上書きする。
+   盤の駒やカードの中身の描画は style.css 側のまま。
+   =========================================================================== */
+
+:root {
+  /* 実測した配色 */
+  --c-sea:        #328DC1;   /* 地（海） */
+  --c-ink-light:  #F6F8FA;   /* 濃色地の文字 */
+  --c-ink-dark:   #000000;   /* 明色地の文字 */
+  --c-panel-a:    #FCFAF5;   /* 明るいパネル 上 */
+  --c-panel-b:    #E2D7C4;   /* 明るいパネル 下 */
+  --c-dim-a:      #ADADAA;   /* 相手カード 上 */
+  --c-dim-b:      #A59D90;   /* 相手カード 下 */
+  --c-badge:      #285FBD;   /* 数量バッジ */
+  --c-rule:       #808080;   /* ログの区切り線 */
+  --c-radius:     4px;
+  /* 実測したアニメーション */
+  --t-press:      .05s ease-in-out;   /* ボタン押下 */
+  --t-slide:      .12s linear;        /* 手札に入る */
+  --t-pop:        .3s;                /* サイコロの出入り */
+}
+
+body {
+  background: var(--c-sea) !important;
+  font-family: "Open Sans", system-ui, -apple-system, "Segoe UI",
+               "Hiragino Sans", "Noto Sans JP", sans-serif !important;
+  font-size: 16px;
+  color: var(--c-ink-light);
+}
+
+/* ---------------------------------------------------------------- 骨格 */
+
+#app {
+  position: fixed; inset: 0;
+  display: block !important;
+  overflow: hidden;
+}
+#app[hidden] { display: none !important; }
+
+/* 左レール 62px。アイコン 43x43 を 57px 間隔で */
+#rail {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 62px;
+  display: flex; flex-direction: column; align-items: center;
+  padding-top: 12px; gap: 14px; z-index: 30;
+}
+#rail .railbtn {
+  width: 43px; height: 43px; padding: 0; flex: 0 0 auto;
+  display: grid; place-items: center;
+  background: none; border: 0; border-radius: var(--c-radius);
+  cursor: pointer; opacity: .92;
+  transition: transform var(--t-press), opacity var(--t-press);
+}
+#rail .railbtn svg { width: 26px; height: 26px; fill: var(--c-ink-light); }
+#rail .railbtn:hover { opacity: 1; background: rgba(255,255,255,.12); }
+#rail .railbtn:active { transform: scale(.94); }
+
+/* 盤は削らず全面。UI はこの上に重ねる */
+#stage {
+  position: absolute; left: 62px; right: 361px; top: 0; bottom: 0;
+  overflow: hidden;
+}
+#boardwrap {
+  position: absolute; inset: 0;
+  /* 下の帯とぶつからないよう、盤の描画だけ少し上へ寄せる */
+  padding-bottom: 96px;
+}
+#boardwrap::before, #boardwrap::after { display: none; }   /* 漂う光は出さない */
+#board { width: 100%; height: 100%; padding: 0 !important; display: block; }
+
+/* ---------------------------------------------------------------- 右カラム */
+
+#side {
+  position: absolute; right: 0; top: 0; bottom: 0; width: 361px;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 3px 4px 4px 0; z-index: 20;
+  background: none;
+}
+/* 明るいパネル。ログ・チャット・銀行・自分のカードが同じ地 */
+#app .beige,
+#app #players-panel .pl.self {
+  background: linear-gradient(var(--c-panel-a), var(--c-panel-b)) !important;
+  border: 0 !important;
+  border-radius: var(--c-radius) !important;
+  color: var(--c-ink-dark) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+#log {
+  flex: 1 1 auto; min-height: 120px; max-height: 46%;
+  padding: 8px 8px 6px !important;
+  overflow: hidden; display: flex; flex-direction: column;
+}
+#log h3 { display: none; }
+#loglines {
+  flex: 1; overflow-y: auto; min-height: 0;
+  font-size: 15px; color: var(--c-ink-dark);
+}
+
+/* チャットの見出し。畳んだ状態だけ用意する */
+#app .chathead {
+  flex: 0 0 auto; height: 42px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 14px !important; font-size: 15px; font-weight: 600;
+  cursor: pointer; text-align: left;
+}
+#app .chathead .chev { opacity: .6; }
+
+#bankpanel {
+  position: static !important;
+  flex: 0 0 auto; padding: 8px !important;
+}
+
+#players-panel {
+  flex: 0 0 auto; overflow: visible; background: none; border: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+#players-panel h3 { display: none; }
+
+/* ---------------------------------------------------------------- 下の帯 */
+
+#turnbox {
+  position: absolute !important; left: 62px; right: 361px; bottom: 0;
+  z-index: 25;
+  display: grid !important;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "hand status" "hand actions";
+  align-items: end; gap: 0 12px;
+  padding: 0 12px 6px 12px;
+  background: none !important; border: 0 !important;
+  box-shadow: none !important; backdrop-filter: none !important;
+  width: auto !important;
+}
+#handbar {
+  grid-area: hand; align-self: end;
+  min-height: 85px; margin: 0 !important;
+  background: linear-gradient(var(--c-panel-a), var(--c-panel-b));
+  border-radius: var(--c-radius);
+  padding: 9px 10px;
+  display: flex; align-items: center; gap: 6px;
+  transition: background .18s ease;
+}
+/* 手札が上限を超えたら地を赤く染める（実測どおり 3 か所で警告する、その 1 つ） */
+#handbar.over { background: linear-gradient(#ffd9d9, #f0b9b4); }
+
+/* 状態バー: [アイコン][やること][のこり時間] */
+#prompt {
+  grid-area: status; justify-self: end;
+  display: flex !important; align-items: center; gap: 0;
+  height: 43px; margin-bottom: 6px;
+  font-size: 17px; color: var(--c-ink-dark);
+}
+#prompt[hidden] { display: none !important; }
+#promptavatar {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center; flex: 0 0 auto;
+  background: radial-gradient(50% 50%, #EC6F66, #EC6961);
+  box-shadow: 0 0 0 3px rgba(255,255,255,.85);
+}
+#promptavatar:empty { display: none; }
+#prompttext {
+  background: linear-gradient(var(--c-panel-a), var(--c-panel-b));
+  border-radius: var(--c-radius);
+  padding: 0 22px; height: 43px; line-height: 43px;
+  min-width: 230px; text-align: center; font-weight: 600;
+  margin-left: -19px; padding-left: 41px;
+}
+#prompttimer {
+  background: linear-gradient(var(--c-panel-a), var(--c-panel-b));
+  border-radius: var(--c-radius);
+  margin-left: 4px; padding: 0 14px; height: 43px; line-height: 43px;
+  font-variant-numeric: tabular-nums; min-width: 85px; text-align: center;
+}
+#prompttimer:empty { display: none; }
+
+/* 操作ボタン 6 個。85x85 を 90px 間隔で */
+#actions {
+  grid-area: actions;
+  display: flex !important; flex-wrap: nowrap !important; gap: 5px;
+  justify-content: flex-end;
+}
+#app .abtn {
+  position: relative; width: 85px; height: 85px; padding: 0;
+  display: grid; place-items: center;
+  background: linear-gradient(#cfe4f2, #a9c9e0);
+  border: 2px solid #7fa8c6; border-radius: 7px;
+  cursor: pointer;
+  transition: transform var(--t-press), filter var(--t-press);
+}
+#app .abtn:hover:not(:disabled) { filter: brightness(1.08); background: linear-gradient(#cfe4f2, #a9c9e0); border-color: #7fa8c6; }
+#app .abtn:active:not(:disabled) { transform: scale(.95); }
+#app .abtn:disabled { filter: grayscale(.7) brightness(.82); opacity: 1; cursor: default; }
+#app .abtn svg { width: 46px; height: 46px; }
+#app .abtn .glyph { font-size: 30px; line-height: 1; color: #17313f; }
+/* 残り駒数のバッジ。右上・22x22・左下だけ大きく丸い */
+#app .abtn .badge {
+  position: absolute; right: 4px; top: 4px;
+  min-width: 22px; height: 22px; padding: 0 4px;
+  background: var(--c-badge); color: #fff;
+  font-size: 13px; font-weight: 700; line-height: 22px; text-align: center;
+  border-radius: 2px 2px 2px 22px;
+}
+#app .abtn.warn .badge { background: #d0453f; }
+
+/* 画面最下端の時間バー */
+#timerbar {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 4px;
+  background: rgba(0,0,0,.25); z-index: 40;
+}
+#timerbar i { display: block; height: 100%; width: 100%; background: #ffd24a; transition: width 1s linear; }
+
+/* ---------------------------------------------------------------- 盤の上に重なるもの */
+
+/* 出目。振ったあとも消えない */
+#dicetray {
+  position: absolute; right: 18px; bottom: 108px; z-index: 22;
+  display: flex; gap: 6px;
+  transition: transform var(--t-pop), opacity var(--t-pop);
+}
+#dicetray[hidden] { display: none; }
+#dicetray .tdie {
+  width: 73px; height: 73px; border-radius: 12px;
+  background: linear-gradient(#fdfdfd, #dfe4e8);
+  border: 2px solid #b9c3cb;
+  display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+  padding: 11px; gap: 3px;
+}
+#dicetray .tdie i { width: 13px; height: 13px; border-radius: 50%; background: #22303a; align-self: center; justify-self: center; }
+
+/* 相手からの提案。右上に重ねる */
+#offers {
+  position: absolute; right: 10px; top: 6px; z-index: 24;
+  display: flex; flex-direction: column; gap: 6px; width: 330px;
+}
+#offers:empty { display: none; }
+
+/* 捨て札・確認のパネル。左下からせり上がる */
+#actionbox {
+  position: absolute; left: 0; bottom: 104px; z-index: 26;
+  width: 507px; max-width: calc(100% - 20px);
+  background: linear-gradient(var(--c-panel-a), var(--c-panel-b));
+  border-radius: var(--c-radius);
+  color: var(--c-ink-dark);
+  box-shadow: 0 10px 30px rgba(0,0,0,.28);
+  overflow: hidden;
+}
+#actionbox[hidden] { display: none; }
+#actionbox .abx-head { display: flex; gap: 10px; padding: 10px 12px 8px; }
+#actionbox .abx-icon { width: 40px; height: 62px; flex: 0 0 auto; }
+#actionbox .abx-title { font-size: 19px; font-weight: 700; color: #c0392b; }
+#actionbox .abx-title.ok { color: #1e8b3a; }
+#actionbox .abx-body { font-size: 14px; line-height: 1.5; margin-top: 2px; }
+#actionbox .abx-tray {
+  min-height: 65px; display: flex; align-items: center; gap: 5px;
+  padding: 7px 12px; background: rgba(255,255,255,.45);
+}
+#actionbox .abx-foot { display: flex; justify-content: flex-end; padding: 8px 12px; }
+#actionbox .abx-ok {
+  width: 36px; height: 36px; display: grid; place-items: center;
+  border-radius: 6px; border: 2px solid #7fa8c6;
+  background: linear-gradient(#cfe4f2, #a9c9e0); cursor: pointer;
+}
+#actionbox .abx-ok:disabled { filter: grayscale(.7) brightness(.9); cursor: default; }
+#actionbox .abx-ok svg { width: 22px; height: 22px; fill: #1e8b3a; }
+
+/* 反則の知らせ。左下に一瞬 */
+#toast {
+  position: absolute; left: 10px; bottom: 100px; z-index: 28;
+  color: #fff; font-size: 14px; text-shadow: 0 1px 3px rgba(0,0,0,.7);
+  pointer-events: none;
+  animation: toastfade 2.6s ease forwards;
+}
+#toast[hidden] { display: none; }
+@keyframes toastfade {
+  0% { opacity: 0; transform: translateY(6px); }
+  10%, 70% { opacity: 1; transform: none; }
+  100% { opacity: 0; }
+}
+
+/* ---------------------------------------------------------------- ログ */
+
+#loglines .line {
+  display: flex; align-items: flex-start; gap: 6px;
+  padding: 2px 0; color: var(--c-ink-dark); font-size: 15px;
+}
+#loglines .line .who { font-weight: 600; }
+#loglines .line .txt { font-weight: 400 !important; }
+#loglines .line svg { width: 22px; height: 22px; vertical-align: -5px; }
+/* ターンの切れ目に罫線 */
+#loglines .turnrule { border: 0; border-top: 2px solid var(--c-rule); margin: 6px 0; opacity: .5; }
+
+/* ---------------------------------------------------------------- プレイヤーカード */
+
+#players-panel .pl {
+  display: flex; align-items: center; gap: 8px;
+  height: 80px; padding: 6px 10px;
+  background: linear-gradient(var(--c-dim-a), var(--c-dim-b));
+  border-radius: var(--c-radius); border: 0;
+  color: var(--c-ink-dark);
+}
+/* 自分だけ明るく・大きく・一番下 */
+#players-panel .pl.self { height: 125px; order: 9; }
+#players-panel .pl.active { box-shadow: inset 0 0 0 2px rgba(255,255,255,.85); }
+#players-panel .swatch { display: none; }
+
+/* ---------------------------------------------------------------- 手札のカード */
+
+#handbar .card, #handbar .rescard { animation: slidein var(--t-slide) forwards; }
+@keyframes slidein { from { transform: translateX(-14px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* 数量バッジは全部同じ形（左下だけ大きく丸い） */
+#app .cnt, #app .qty {
+  background: var(--c-badge); color: #fff;
+  border-radius: 2px 2px 2px 22px;
+}
+
+/* ---------------------------------------------------------------- 使わなくなったもの */
+
+#hiddenbits { display: none !important; }
+#uitoggle, #sfxtoggle.legacy { display: none !important; }
+#sidestack { display: none !important; }
+header { display: none !important; }
+
+/* ---------------------------------------------------------------- 明色地の文字
+   style.css は暗い地を前提に --text（ほぼ白）を使っている。
+   明るいパネルの中だけ、地の色に合わせて黒へ倒す。
+   名前だけは各プレイヤーの色を inline style で当てているので、そちらが勝つ。 */
+
+#app .beige,
+#app .beige h3,
+#app .beige b,
+#app .beige span,
+#app .beige div,
+#app #players-panel .pl,
+#app #players-panel .pl b,
+#app #players-panel .pl span,
+#app #players-panel .pl div,
+#app #handbar,
+#app #handbar span,
+#app #handbar b,
+#app #actionbox,
+#app #actionbox * {
+  color: var(--c-ink-dark);
+}
+#app .beige .muted, #app #players-panel .pl .me { color: #4a5a68; }
+
+/* 手札は左いっぱいに */
+#handbar { width: 100%; }
+
+/* プレイヤーカードの中身を 1 行に収める */
+#players-panel .pl .pscore { width: 62px; flex: 0 0 auto; }
+#players-panel .pl .pscore .vp { font-size: 22px; color: #b8860b; -webkit-text-stroke: 0; }
+#players-panel .pl .pscore .name { font-size: 12px; font-weight: 700; }
+#players-panel .pl .pinfo { flex: 1; min-width: 0; }
+#players-panel .pl .stats { gap: 10px; }
+#players-panel .pl.self .pscore .vp { font-size: 26px; }
+/* 手札が上限超えのプレイヤーは、枚数を赤くして警告（3 か所の 2 つ目） */
+#players-panel .pl .stats b.over { color: #c0392b; font-weight: 800; }
+
+/* ログの行間を colonist に寄せる */
+#loglines .line { line-height: 1.45; }
+#loglines .line .who {
+  width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto; margin-top: 1px;
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.55);
+}
+
+/* 銀行の帯 */
+#bankpanel h3 { display: none; }
+
+/* style.css 側の指定が強いので、明色地の文字はここで押し切る */
+#app #players-panel .pl *:not([style*="color"]) { color: #17242e !important; }
+#app #players-panel .pl .vp { color: #8a5a04 !important; }
+#app #players-panel .pl .lb,
+#app #players-panel .pl .me { color: #46586a !important; }
+#app #players-panel .pl b.none { color: #8b98a4 !important; }
+#app #loglines .line .txt { color: #17242e !important; }
+#app #handbar *:not([style*="color"]) { color: #17242e !important; }
+#app #bankpanel *:not([style*="color"]) { color: #17242e !important; }
+
+/* 持ち時間の仕組みがまだ無いので、時間バーは出さない（枠だけ残す） */
+#timerbar { display: none; }
+
+/* ---------------------------------------------------------------- 左下パネルの中身
+   中で使い回している既存の部品（tile / chip / resCard）は暗い地の前提なので、
+   明るいパネルの中だけ色を差し替える。 */
+
+#actionbox .banner {
+  background: none; border: 0; padding: 4px 12px 2px;
+  font-size: 17px; font-weight: 700; color: #17242e;
+}
+#actionbox .tile,
+#actionbox .subitem {
+  background: linear-gradient(#cfe4f2, #a9c9e0) !important;
+  border: 2px solid #7fa8c6 !important;
+  border-radius: 7px !important;
+  color: #17242e !important;
+  transition: transform var(--t-press), filter var(--t-press);
+}
+#actionbox .tile:hover:not(:disabled),
+#actionbox .subitem:hover:not(:disabled) { filter: brightness(1.08); }
+#actionbox .tile:active:not(:disabled) { transform: scale(.96); }
+#actionbox .tile:disabled { filter: grayscale(.7) brightness(.9); opacity: 1; }
+#actionbox .tile.end, #actionbox .tile.roll {
+  background: linear-gradient(#ffd98a, #f0b24a) !important; border-color: #d2913a !important;
+}
+#actionbox .no { color: #a3452f !important; }
+#actionbox .chip { background: rgba(0,0,0,.07) !important; color: #17242e !important; }
+#actionbox .chip.out { background: rgba(190,60,50,.18) !important; }
+#actionbox .chip.in  { background: rgba(40,140,70,.18) !important; }
+/* 資源カードは盤と同じ絵のまま。枠だけ明るい地に合わせる */
+#actionbox .rescard, #actionbox .card { filter: none; }
+
+/* 相手からの提案は盤の右上に重ねる（colonist はここ）。
+   下のパネルは「捨て札」「発展カードの確認」に譲る。 */
+#offers .offercard {
+  background: linear-gradient(var(--c-panel-a), var(--c-panel-b));
+  border-radius: var(--c-radius); color: var(--c-ink-dark);
+  box-shadow: 0 8px 22px rgba(0,0,0,.28);
+  padding: 8px 10px;
+}
+
+/* ---------------------------------------------------------------- 提案カード（右上） */
+
+#offers .offercard { font-size: 14px; }
+#offers .oc-head { display: flex; align-items: center; gap: 6px; font-weight: 700; margin-bottom: 4px; }
+#offers .oc-who { width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255,255,255,.55); }
+#offers .oc-row { display: flex; align-items: center; gap: 5px; min-height: 34px; }
+#offers .oc-dir { font-weight: 800; width: 18px; text-align: center; }
+#offers .oc-dir.get { color: #1e8b3a; }
+#offers .oc-dir.put { color: #c0392b; }
+#offers .oc { display: inline-flex; align-items: center; gap: 2px;
+  background: rgba(0,0,0,.07); border-radius: 4px; padding: 2px 5px 2px 3px; }
+#offers .oc b { font-size: 13px; }
+#offers .oc-btns { margin-left: auto; display: flex; gap: 4px; }
+#offers .oc-b {
+  width: 32px; height: 32px; border-radius: 6px; cursor: pointer;
+  border: 2px solid #7fa8c6; background: linear-gradient(#cfe4f2, #a9c9e0);
+  color: #17313f; font-size: 16px; line-height: 1; padding: 0;
+  transition: transform var(--t-press), filter var(--t-press);
+}
+#offers .oc-b:hover:not(:disabled) { filter: brightness(1.08); }
+#offers .oc-b:active:not(:disabled) { transform: scale(.94); }
+#offers .oc-b:disabled { filter: grayscale(.7) brightness(.9); cursor: default; }
+#offers .oc-b.yes { color: #1e8b3a; font-weight: 800; }
+#offers .oc-b.no  { color: #c0392b; font-weight: 800; }
+
+/* ---------------------------------------------------------------- 発展カードの確認 */
+
+#actionbox .devconfirm { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+#actionbox .dc-text { flex: 1; font-size: 14px; line-height: 1.5; }
+#actionbox .dc-btns { display: flex; gap: 6px; flex: 0 0 auto; }
+#actionbox .dc-no, #actionbox .dc-yes {
+  width: 36px; height: 36px; border-radius: 6px; cursor: pointer;
+  border: 2px solid #7fa8c6; background: linear-gradient(#cfe4f2, #a9c9e0);
+  font-size: 17px; font-weight: 800; padding: 0;
+  transition: transform var(--t-press), filter var(--t-press);
+}
+#actionbox .dc-no { color: #c0392b; }
+#actionbox .dc-yes { color: #1e8b3a; }
+#actionbox .dc-yes:active, #actionbox .dc-no:active { transform: scale(.94); }
+
+/* ---------------------------------------------------------------- 捨て札の帯 */
+
+#actionbox .traycard {
+  position: relative; width: 46px; height: 62px; border-radius: 5px; cursor: pointer;
+  display: grid; place-items: center;
+  background: linear-gradient(#ffffff, #e7e2d6); border: 2px solid #b9b0a0;
+  transition: transform var(--t-press);
+}
+#actionbox .traycard:active { transform: scale(.94); }
+#actionbox .traycard .cnt {
+  position: absolute; right: -3px; top: -3px; min-width: 20px; height: 20px;
+  background: var(--c-badge); color: #fff; font-size: 12px; font-weight: 700;
+  line-height: 20px; text-align: center; border-radius: 2px 2px 2px 20px;
+}
+
+/* ---------------------------------------------------------------- 手札 */
+
+/* 押せる場面ではカードが浮く。押せない場面では動かない */
+#handbar .hcard.pickable { cursor: pointer; transition: transform var(--t-press); }
+#handbar .hcard.pickable:hover { transform: translateY(-4px); }
+/* 銀行レートをカードに直接書く（別画面で調べさせない） */
+#handbar .hrate {
+  display: block; font-size: 10px; font-weight: 700; color: #5b6a76;
+  text-align: center; margin-top: 1px;
+}
+/* 発展カードは資源と別の並びに。押すと持ち上がる */
+#handbar .hdevs { display: flex; gap: 5px; margin-left: 14px; }
+#handbar .hdev {
+  width: 48px; min-height: 62px; border-radius: 5px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  background: linear-gradient(#efe6ff, #cdbcff); border: 2px solid #6b559f;
+  transition: transform var(--t-press);
+}
+#handbar .hdev .hl { font-size: 10px; font-weight: 700; color: #2a1f4a; }
+#handbar .hdev:hover, #handbar .hdev.on { transform: translateY(-5px); }
+#handbar .hdev.vp { cursor: default; opacity: .8; }
+
+/* ---------------------------------------------------------------- 交易の卓（4 段） */
+
+#actionbox .tc-sample {
+  display: flex; gap: 5px; padding: 8px 10px;
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+#actionbox .tsample {
+  width: 45px; height: 62px; border-radius: 5px; cursor: pointer;
+  display: grid; place-items: center;
+  background: linear-gradient(#ffffff, #e7e2d6); border: 2px solid #b9b0a0;
+  transition: transform var(--t-press);
+}
+#actionbox .tsample:hover { transform: translateY(-3px); }
+#actionbox .tsample:active { transform: scale(.95); }
+
+#actionbox .tc-lane {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 66px; padding: 3px 10px;
+  background: rgba(255,255,255,.45);
+}
+#actionbox .tc-lane + .tc-lane { background: rgba(255,255,255,.25); }
+#actionbox .tc-dir { font-size: 20px; font-weight: 800; width: 22px; text-align: center; }
+#actionbox .tc-dir.get { color: #1e8b3a; }
+#actionbox .tc-dir.put { color: #c0392b; }
+#actionbox .tc-cards { display: flex; gap: 5px; flex-wrap: wrap; }
+#actionbox .lanecard {
+  position: relative; width: 40px; height: 54px; border-radius: 5px; cursor: pointer;
+  display: grid; place-items: center;
+  background: linear-gradient(#ffffff, #e7e2d6); border: 2px solid #b9b0a0;
+  transition: transform var(--t-press);
+}
+#actionbox .lanecard:active { transform: scale(.94); }
+#actionbox .lanecard .cnt {
+  position: absolute; right: -3px; top: -3px; min-width: 20px; height: 20px;
+  background: var(--c-badge); color: #fff; font-size: 12px; font-weight: 700;
+  line-height: 20px; text-align: center; border-radius: 2px 2px 2px 20px;
+}
+
+#actionbox .tc-foot { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 10px; }
+#actionbox .tc-ok, #actionbox .tc-cancel {
+  width: 44px; height: 44px; border-radius: 7px; cursor: pointer; padding: 0;
+  display: grid; place-items: center;
+  border: 2px solid #7fa8c6; background: linear-gradient(#cfe4f2, #a9c9e0);
+  font-size: 17px; font-weight: 800; color: #c0392b;
+  transition: transform var(--t-press), filter var(--t-press);
+}
+#actionbox .tc-ok svg { width: 24px; height: 24px; fill: #17313f; }
+#actionbox .tc-ok:disabled { filter: grayscale(.7) brightness(.9); cursor: default; }
+#actionbox .tc-ok:active:not(:disabled), #actionbox .tc-cancel:active { transform: scale(.94); }
+
+/* 産出したマスが一瞬沈む。札が飛ぶ前に「出どころ」を示す */
+#board .prodflash {
+  fill: #000; opacity: 0; pointer-events: none;
+  animation: prodflash .95s ease forwards;
+}
+@keyframes prodflash {
+  0% { opacity: 0; }
+  18% { opacity: .40; }
+  55% { opacity: .34; }
+  100% { opacity: 0; }
+}
+
+/* ===========================================================================
+   資源カードの絵をひとつに統一する。
+   手札・ログ・提案カード・交易の卓 ── どこに出ても同じ見た目にする。
+   場所ごとに絵を変えると、同じ「木材 1 枚」を毎回読み替えることになる。
+   =========================================================================== */
+
+#app .ucard, #app .tsample, #app .lanecard, #app .traycard, #app #handbar .hcard {
+  position: relative;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,.16);
+  box-shadow: 0 2px 6px rgba(0,0,0,.35);
+  display: grid; place-items: center;
+  background-image: none;
+}
+/* ★ 盤のマス（TERRAIN の a→b）と**同じ色**にする。
+   カードだけ暗いと、同じ資源が盤と手札で別物に見える。 */
+#app .WOOD  { background: linear-gradient(#3f8a51, #1c4f2e) !important; }
+#app .BRICK { background: linear-gradient(#c26a3f, #8a3d1e) !important; }
+#app .SHEEP { background: linear-gradient(#9ecb5e, #69973a) !important; }
+#app .WHEAT { background: linear-gradient(#e6bc57, #bd8c22) !important; }
+#app .ORE   { background: linear-gradient(#8b919c, #575d67) !important; }
+
+/* 枚数のバッジは全部同じ形（左下だけ大きく丸い） */
+#app .ucard b, #app .lanecard .cnt, #app .traycard .cnt, #app #handbar .hcard .hn {
+  position: absolute; right: -3px; top: -3px;
+  min-width: 19px; height: 19px; padding: 0 4px;
+  background: var(--c-badge) !important; color: #fff !important;
+  font-size: 12px; font-weight: 700; line-height: 19px; text-align: center;
+  border-radius: 2px 2px 2px 19px; text-shadow: none;
+}
+
+/* 大きさは置き場所で 3 段階。絵と数字だけで、文字は入れない */
+#app .ucard { width: 26px; height: 34px; }
+#app .ucard svg { width: 18px; height: 18px; }
+#app .ucard.offer { width: 32px; height: 42px; }
+#app .ucard.offer svg { width: 22px; height: 22px; }
+#app .ucard.log { width: 24px; height: 31px; margin-right: 3px; }
+/* ログは「払った／得た」を向きの印で分ける（色は資源の色のままにする） */
+#app .ucard.log.out::after, #app .ucard.log.in::after {
+  content: ""; position: absolute; left: 2px; bottom: 2px;
+  border-left: 4px solid transparent; border-right: 4px solid transparent;
+}
+#app .ucard.log.out::after { border-top: 5px solid #ff8a7a; }
+#app .ucard.log.in::after  { border-bottom: 5px solid #7ee6a8; }
+#app #loglines .flow { display: inline-flex; align-items: center; gap: 2px; vertical-align: -8px; }
+
+/* ---------------------------------------------------------------- 手札 */
+
+/* ★ 伸び縮みをやめて実寸で固定する。1fr で伸ばすと縦長になりすぎる */
+#app #handbar .hcards { display: flex; gap: 6px; justify-content: flex-start; }
+#app #handbar .hcard {
+  flex: 0 0 auto !important; width: 52px !important; height: 68px !important;
+  aspect-ratio: auto !important; min-width: 0; padding: 0 !important;
+}
+#app #handbar .hcard::after { display: none; }
+/* 絵はカードの**中央**に置く。style.css は上端に絶対配置していたので打ち消す */
+#app #handbar .hcard {
+  display: grid !important; place-items: center !important;
+  justify-content: center !important; align-items: center !important;
+}
+#app #handbar .hcard .hglyph {
+  position: static !important; transform: none !important;
+  top: auto !important; left: auto !important;
+  display: grid; place-items: center;
+}
+#app #handbar .hcard .hglyph svg { width: 30px; height: 30px; }
+/* 文字は出さない。絵と数字だけ */
+#app #handbar .hcard .hl { display: none !important; }
+#app #handbar .hcard .hrate {
+  position: absolute; left: 0; right: 0; bottom: 2px;
+  font-size: 9px; color: rgba(255,255,255,.75); text-align: center; margin: 0;
+}
+#app #handbar .hdev { width: 52px; min-height: 68px; }
+
+/* 交易の卓のカードも同じ大きさ感で */
+#app #actionbox .tsample { width: 46px; height: 60px; }
+#app #actionbox .tsample svg { width: 26px; height: 26px; }
+#app #actionbox .lanecard { width: 42px; height: 55px; }
+#app #actionbox .traycard { width: 46px; height: 60px; }
+#app #actionbox .tc-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px 2px; font-weight: 700; font-size: 15px;
+}
+
+/* ---------------------------------------------------------------- 出目の位置 */
+
+/* 状態バー（下から 6+85+6+43 ＝ 140px）に被らない高さへ上げる */
+#dicetray { bottom: 152px; }
+
+/* 対案では銀行ボタンを出さない。display 指定が [hidden] に勝ってしまうので明示する */
+#app #actionbox .tc-ok[hidden] { display: none !important; }
+
+/* ---------------------------------------------------------------- 出目の分布
+   盤の左下。既定は矢印だけ出しておき、押した時にだけ開く。
+   左下のパネル（捨て札・交易）が開いたら、そちらが上に被る（z-index 26 > 23）。 */
+
+#distbox {
+  position: absolute; left: 10px; bottom: 100px; z-index: 23;
+  display: flex; flex-direction: column-reverse; align-items: flex-start; gap: 5px;
+}
+#distbox #disttoggle {
+  padding: 5px 11px; border-radius: var(--c-radius); cursor: pointer;
+  background: linear-gradient(var(--c-panel-a), var(--c-panel-b));
+  border: 0; color: #17242e; font-size: 13px; font-weight: 700;
+  box-shadow: 0 3px 10px rgba(0,0,0,.25);
+  transition: transform var(--t-press);
+}
+#distbox #disttoggle:hover { filter: brightness(1.05); }
+#distbox #disttoggle:active { transform: scale(.96); }
+#distbox #rolldist {
+  background: linear-gradient(var(--c-panel-a), var(--c-panel-b));
+  border-radius: var(--c-radius); padding: 8px 10px 6px;
+  box-shadow: 0 8px 22px rgba(0,0,0,.28);
+}
+#distbox #rolldist[hidden] { display: none; }
+#distbox #rolldist * { color: #17242e; }
+
+/* ---------------------------------------------------------------- 銀行 */
+
+/* 山の厚みで残量を見せる。box-shadow を層にして重なりを作っている（JS 側で生成） */
+#app #bankpanel { display: flex; gap: 12px; padding: 12px 10px 8px !important; }
+#app #bankpanel .bpcard {
+  position: relative; width: 40px; height: 54px; border-radius: 4px;
+  display: grid; place-items: center; flex: 0 0 auto;
+  border: 1px solid rgba(255,255,255,.2);
+}
+#app #bankpanel .bpcard.empty { opacity: .3; }
+#app #bankpanel .bpn {
+  position: absolute; right: -4px; bottom: -6px;
+  min-width: 20px; height: 19px; padding: 0 4px;
+  background: var(--c-badge); color: #fff;
+  font-size: 12px; font-weight: 700; line-height: 19px; text-align: center;
+  border-radius: 2px 2px 2px 19px;
+}
+
+/* ---------------------------------------------------------------- クリックの通り道
+   🔴 #turnbox は下の帯いっぱい（左端〜右端・高さ約 140px）に広がっていて、
+      **中身が無い空白部分までクリックを吸っていた**。
+      そのせいで左下の「出目」ボタンも、盤の下端も押せなかった。
+      箱そのものは素通りさせ、実際に押す物だけ受け取る。 */
+#turnbox { pointer-events: none; }
+#turnbox #handbar,
+#turnbox #prompt,
+#turnbox #actions { pointer-events: auto; }
+
+/* 出目は下の帯より前に出す */
+#distbox { z-index: 27; }
+
+/* ===========================================================================
+   大きさの見直し。
+   盤を少し小さくして、その分を**手札・操作・プレイヤー欄**に回す。
+   盤は見るもの、下の帯は触るもの。触る物を大きくした方が扱いやすい。
+   =========================================================================== */
+
+/* 盤を縮める（下の帯が高くなったぶん + 左右にも余白） */
+#boardwrap { padding: 10px 12px 176px; }
+
+/* --- 手札 --- */
+#handbar { min-height: 108px; padding: 11px 12px; }
+#app #handbar .hcards { gap: 7px; }
+#app #handbar .hcard { width: 64px !important; height: 86px !important; }
+#app #handbar .hcard .hglyph svg { width: 38px; height: 38px; }
+#app #handbar .hcard .hn { min-width: 23px; height: 23px; line-height: 23px; font-size: 14px;
+  border-radius: 2px 2px 2px 23px; }
+#app #handbar .hcard .hrate { font-size: 11px; bottom: 3px; }
+#app #handbar .hdevs { gap: 6px; margin-left: 18px; }
+#app #handbar .hdev { width: 64px; min-height: 86px; }
+#app #handbar .hdev .hl { font-size: 11px; }
+
+/* --- 操作ボタン --- */
+#app .abtn { width: 100px; height: 100px; border-radius: 8px; }
+#app .abtn svg { width: 54px; height: 54px; }
+#app .abtn .glyph { font-size: 36px; }
+#app .abtn .badge { min-width: 25px; height: 25px; line-height: 25px; font-size: 14px;
+  border-radius: 2px 2px 2px 25px; right: 5px; top: 5px; }
+
+/* --- 状態バー --- */
+#prompt { height: 50px; font-size: 19px; }
+#promptavatar { width: 44px; height: 44px; }
+#prompttext { height: 50px; line-height: 50px; min-width: 260px; margin-left: -22px; padding-left: 46px; }
+#prompttimer { height: 50px; line-height: 50px; min-width: 92px; }
+
+/* 帯が高くなったので、上に重なる物も上げる */
+#actionbox { bottom: 170px; }
+#distbox   { bottom: 170px; }
+#dicetray  { bottom: 178px; }
+
+/* --- プレイヤー欄。文字を一段大きく --- */
+#log { max-height: 32%; }
+#players-panel .pl { height: 96px; padding: 8px 11px; }
+#players-panel .pl.self { height: 146px; }
+#players-panel .pl .pscore { width: 74px; }
+#app #players-panel .pl .pscore .vp { font-size: 30px !important; }
+#app #players-panel .pl.self .pscore .vp { font-size: 36px !important; }
+#app #players-panel .pl .pscore .name { font-size: 15px; }
+#app #players-panel .pl .pscore .me { font-size: 12px; }
+#app #players-panel .pl .stats { gap: 13px; }
+#app #players-panel .pl .stats b { font-size: 19px; font-weight: 800; }
+#app #players-panel .pl .left { font-size: 15px; }
+#app #players-panel .pl .left b { font-size: 17px; font-weight: 800; }
+#app #players-panel .pl .lb { font-size: 12px; }
+#app #players-panel .pl .ptags .tag { font-size: 12px; }
+
+/* --- 出目の分布。横に広げて読みやすく --- */
+#distbox #rolldist { width: 360px; padding: 12px 14px 10px; }
+#distbox #rolldist .rdbars { gap: 5px; }
+#distbox #rolldist .rdbar { height: 118px; }
+#distbox #rolldist .rdbar em { font-size: 12px; }
+#distbox #rolldist .rdbar b { font-size: 14px; }
+#distbox #rolldist .rdnone { font-size: 13px; }
+
+/* ---------------------------------------------------------------- 縦の収まり
+   カードを大きくしたら、画面の低い環境で 4 人目が切れた。
+   ログを縮める側に回し、プレイヤー欄は足りなければ自分でスクロールさせる。 */
+#side { gap: 6px; }
+#log { flex: 0 1 auto; max-height: 26%; min-height: 90px; }
+#players-panel { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+#players-panel::-webkit-scrollbar { width: 6px; }
+#players-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,.35); border-radius: 3px; }
+
+/* 画面が低いときは、カードの高さを詰めて 4 人ぶん入るようにする */
+@media (max-height: 820px) {
+  #players-panel .pl { height: 84px; }
+  #players-panel .pl.self { height: 122px; }
+  #app #players-panel .pl .pscore .vp { font-size: 26px !important; }
+  #app #players-panel .pl.self .pscore .vp { font-size: 31px !important; }
+}
+
+/* 操作ボタンを少しだけ詰めて、手札に幅を回す */
+#app .abtn { width: 92px; height: 92px; }
+#app .abtn svg { width: 50px; height: 50px; }
+#boardwrap { padding-bottom: 168px; }
+#actionbox, #distbox { bottom: 162px; }
+#dicetray { bottom: 170px; }
+
+/* 提案に対する他の人の返事。カードの見出しの右に小さく並べる */
+#offers .oc-answers { margin-left: auto; display: flex; gap: 4px; }
+#offers .oc-ans {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 800; color: #fff;
+  background: var(--c); box-shadow: inset 0 0 0 2px rgba(255,255,255,.5);
+}
+#offers .oc-ans.WAITING { opacity: .4; }
+#offers .oc-ans.REJECTED { filter: grayscale(.55); }
+
+/* ===========================================================================
+   仕上げの調整
+   =========================================================================== */
+
+/* --- 手札を縦に大きく --- */
+#handbar { min-height: 122px; padding: 12px; }
+#app #handbar .hcard { width: 68px !important; height: 98px !important; }
+#app #handbar .hcard .hglyph svg { width: 42px; height: 42px; }
+#app #handbar .hdev { width: 68px; min-height: 98px; }
+
+/* --- 右カラム。プレイヤー欄の下の余白を無くし、その分ログを伸ばす ---
+   これまで #players-panel を flex:1 で伸ばしていたので、
+   4 人ぶんの下に**使われない余白**が残っていた。伸びる役はログに渡す。 */
+#log { flex: 1 1 auto !important; max-height: none !important; min-height: 90px; }
+#players-panel { flex: 0 0 auto !important; overflow-y: visible; }
+
+/* --- 出目の分布。縦を詰める --- */
+#distbox #rolldist { padding: 9px 12px 7px; }
+#distbox #rolldist .rdbar { height: 76px; }
+#distbox #rolldist .rdbar em { font-size: 11px; }
+#distbox #rolldist .rdbar b { font-size: 12px; }
+
+/* --- 点数を丸で囲む ---
+   その人の色の丸に、白フチの黒い数字。盤の駒と同じ色なので誰の点か一目で分かる。 */
+#app #players-panel .pl .pscore .vp {
+  width: 46px; height: 46px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--c);
+  color: #0a0f14 !important;
+  -webkit-text-stroke: 3px #ffffff; paint-order: stroke fill;
+  font-size: 24px !important; font-weight: 800; line-height: 1;
+  box-shadow: 0 2px 6px rgba(0,0,0,.35);
+  margin: 0 auto 2px;
+}
+#app #players-panel .pl.self .pscore .vp { width: 54px; height: 54px; font-size: 28px !important; }
+/* 丸の中に「pt」は入らない。単位は落とす */
+#app #players-panel .pl .pscore .vp i { display: none; }
+#app #players-panel .pl .pscore { text-align: center; }
+
+/* 🔴 手札の列が min-content 幅で押し広げて、下の帯が右カラムまではみ出していた。
+   （grid の 1fr は既定で min-width:auto ＝ 中身より小さくならない）
+   列を縮められるようにして、手札側が溢れたら横スクロールさせる。 */
+#turnbox { grid-template-columns: minmax(0, 1fr) auto !important; }
+#handbar { overflow-x: auto; overflow-y: hidden; }
+#handbar::-webkit-scrollbar { height: 6px; }
+#handbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,.25); border-radius: 3px; }
+
+/* ---------------------------------------------------------------- 提案のブロック
+   点数のところを押すと、その相手の提案を自動で断る／戻す。
+   切り替えは必ずこの小窓を挟む（押し間違いで勝手に変わらないように）。 */
+
+#askbox {
+  position: fixed; z-index: 60; width: 226px;
+  background: linear-gradient(var(--c-panel-a), var(--c-panel-b));
+  border-radius: var(--c-radius); color: var(--c-ink-dark);
+  padding: 12px 13px 10px; box-shadow: 0 12px 32px rgba(0,0,0,.4);
+}
+#askbox[hidden] { display: none; }
+#askbox .ask-text { font-size: 14px; line-height: 1.5; }
+#askbox .ask-btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+#askbox button {
+  padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 700;
+  border: 2px solid #7fa8c6; background: linear-gradient(#cfe4f2, #a9c9e0); color: #17313f;
+  transition: transform var(--t-press), filter var(--t-press);
+}
+#askbox button:hover { filter: brightness(1.07); }
+#askbox button:active { transform: scale(.95); }
+#askbox .ask-yes { border-color: #c98d3a; background: linear-gradient(#ffd98a, #f0b24a); }
+
+/* 止めている相手は、欄の左に赤い帯を出しておく（止めていることを忘れないため） */
+#players-panel .pl.blocked { position: relative; }
+#players-panel .pl.blocked::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+  border-radius: var(--c-radius) 0 0 var(--c-radius); background: #c0392b;
+}
+#players-panel .pl.blocked .pscore .vp { filter: grayscale(.55); }
+#players-panel .pl.blocked::after {
+  content: "提案を断る"; position: absolute; right: 8px; top: 4px;
+  font-size: 11px; font-weight: 700; color: #c0392b;
+}
+
+/* ---------------------------------------------------------------- プレイヤー欄の読みやすさ
+   相手のカードは灰色の地なので、文字も絵も一段濃くしないと沈む。
+   色分けはしない（種類の区別は形でする）。濃さだけ上げる。 */
+#app #players-panel .pl *:not([style*="color"]) { color: #05090d !important; }
+#app #players-panel .pl .stats b,
+#app #players-panel .pl .left b { color: #05090d !important; font-weight: 800; }
+#app #players-panel .pl .lb,
+#app #players-panel .pl .me { color: #2b3742 !important; font-weight: 700; }
+#app #players-panel .pl b.none { color: #6b7681 !important; }
+#app #players-panel .pl .name { color: #05090d !important; font-weight: 800; }
+/* 相手のカードの地を少し明るくして、黒との差を稼ぐ */
+#players-panel .pl { background: linear-gradient(#c3c3bf, #b3ab9e); }
+#players-panel .pl .ptags .tag { color: #05090d !important; background: rgba(255,255,255,.55); font-weight: 700; }
+
+/* --- 手札をさらに縦に。枚数の数字も大きく --- */
+#handbar { min-height: 140px; padding: 13px 12px; }
+#app #handbar .hcard { width: 74px !important; height: 112px !important; }
+#app #handbar .hcard .hglyph svg { width: 46px; height: 46px; }
+#app #handbar .hcard .hn {
+  min-width: 30px; height: 30px; line-height: 30px; font-size: 19px;
+  border-radius: 3px 3px 3px 30px; right: -4px; top: -4px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.4);
+}
+#app #handbar .hcard .hrate { font-size: 12px; bottom: 4px; }
+#app #handbar .hdev { width: 74px; min-height: 112px; }
+#app #handbar .hdev .hl { font-size: 12px; }
+
+/* ===========================================================================
+   9/8 ── カードの絵を最後まで統一する
+   =========================================================================== */
+
+/* 提案・対案の中身（dealHtml）も手札と同じ札で出す。
+   「渡す／貰う」の向きは色を変えずに、札の上下の細い帯だけで示す
+   （資源の色を塗り替えると、同じ資源が場所によって違う色に見える） */
+#app .ucard.deal { width: 30px; height: 39px; }
+#app .ucard.deal svg { width: 21px; height: 21px; }
+#app .ucard.deal.out { box-shadow: 0 2px 6px rgba(0,0,0,.35), inset 0 -4px 0 rgba(255,138,122,.95); }
+#app .ucard.deal.in  { box-shadow: 0 2px 6px rgba(0,0,0,.35), inset 0 4px 0 rgba(126,230,168,.95); }
+/* 枚数のバッジが隣の札に重ならないよう、並びに少し余白を足す */
+#app .deal { gap: 7px; padding: 3px 2px; }
+#app .offerbox .deal .dl, #app .tile.pick .deal .dl { align-self: center; }
+
+/* 飛んでいる札（flyCard）は `#app` の外（body 直下）に出るので、
+   盤と同じ色の指定が届かない。ここで同じ色を当て直す */
+.fcard { border-radius: 6px; }
+.fcard.WOOD  { background: linear-gradient(#3f8a51, #1c4f2e); }
+.fcard.BRICK { background: linear-gradient(#c26a3f, #8a3d1e); }
+.fcard.SHEEP { background: linear-gradient(#9ecb5e, #69973a); }
+.fcard.WHEAT { background: linear-gradient(#e6bc57, #bd8c22); }
+.fcard.ORE   { background: linear-gradient(#8b919c, #575d67); }
+
+/* ---------------------------------------------------------------- 確認のパネルの位置
+   街道・発展カードなどの「一段挟む」パネルは、**押したボタンのすぐ上**に出す。
+   左下に出していたが、押した指（カーソル）は右下の操作ボタンにある。
+   画面の端から端まで運ばせると、確認を挟む意味より手間の方が大きくなる。
+   サイコロ（z-index 22）には被せてよい ── 確認の方が先に読む物なので上に置く。 */
+#app #actionbox {
+  left: auto !important;
+  right: 12px !important;
+  /* 操作ボタンは 100px（低い画面で 92px）＋下の余白 6px。その上に置く */
+  bottom: 112px !important;
+  max-width: calc(100% - 24px);
+}

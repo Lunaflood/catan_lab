@@ -9,7 +9,50 @@ use crate::bots::Bot;
 use catan_core::action::Action;
 use catan_core::board::PlayerId;
 use catan_core::game::{Game, GameConfig, MAX_PLAYERS};
+use catan_core::observation::LEGACY_APP;
+use catan_core::observer::project_event;
 use catan_core::view::View;
+
+/// 行動 `rec` を全席に投影して、出来事を受けたいボットに届ける。
+///
+/// `bot_at_seat[s]` は席 `s` に座るボットの番号。WASM・サーバのホストも同じ手順を踏む
+/// （[`notify_seats`]）。`before` は行動の直前の本番状態。
+pub fn notify_bots(
+    bots: &mut [Box<dyn Bot>],
+    bot_at_seat: &[usize],
+    before: &Game,
+    after: &Game,
+    rec: &catan_core::action::ActionRecord,
+    seq: u64,
+) {
+    for (seat, &b) in bot_at_seat.iter().enumerate() {
+        if seat >= after.n() {
+            break;
+        }
+        if bots[b].wants_events() {
+            let ev = project_event(before, after, rec, seat as PlayerId, LEGACY_APP, seq);
+            bots[b].observe(&ev);
+        }
+    }
+}
+
+/// 席 `s` のボットが `bots[s]`（席番号＝ボット番号）のホスト向け。
+pub fn notify_seats(
+    bots: &mut [Option<Box<dyn Bot>>],
+    before: &Game,
+    after: &Game,
+    rec: &catan_core::action::ActionRecord,
+    seq: u64,
+) {
+    for seat in 0..after.n().min(bots.len()) {
+        if let Some(bot) = bots[seat].as_mut() {
+            if bot.wants_events() {
+                let ev = project_event(before, after, rec, seat as PlayerId, LEGACY_APP, seq);
+                bot.observe(&ev);
+            }
+        }
+    }
+}
 
 /// 1 試合あたりの行動数の上限。無限ループの保険。
 pub const MAX_ACTIONS_PER_GAME: usize = 100_000;
@@ -39,6 +82,8 @@ pub struct MatchResult {
     pub counters: u64,
     pub confirmed: u64,
     pub counters_accepted: u64,
+    /// ボットごとの 1 判断の所要時間（マイクロ秒）。合法手が 1 つの局面も含む
+    pub decision_us: Vec<Vec<u32>>,
 }
 
 impl MatchResult {
@@ -58,6 +103,16 @@ impl MatchResult {
     }
     pub fn games_per_sec(&self) -> f64 {
         self.games as f64 / self.elapsed_secs.max(1e-9)
+    }
+    /// 判断時間の分位点（p50, p95, max）。マイクロ秒
+    pub fn decision_quantiles(&self, i: usize) -> (u32, u32, u32) {
+        let mut v = self.decision_us.get(i).cloned().unwrap_or_default();
+        if v.is_empty() {
+            return (0, 0, 0);
+        }
+        v.sort_unstable();
+        let q = |f: f64| v[((v.len() - 1) as f64 * f).round() as usize];
+        (q(0.5), q(0.95), *v.last().unwrap())
     }
 
     pub fn report(&self) -> String {
@@ -90,6 +145,20 @@ impl MatchResult {
                 if z.abs() > 2.58 { ", p<0.01" } else { "" }
             ));
         }
+        for i in 0..n {
+            let (p50, p95, mx) = self.decision_quantiles(i);
+            s.push_str(&format!(
+                "  {:<16} 判断時間 p50 {:.3}ms / p95 {:.3}ms / max {:.3}ms（{} 判断）
+",
+                self.names[i],
+                p50 as f64 / 1000.0,
+                p95 as f64 / 1000.0,
+                mx as f64 / 1000.0,
+                self.decision_us.get(i).map_or(0, |v| v.len())
+            ));
+        }
+        s.push_str(&format!("  未決着 {} / {}
+", self.stalled, self.games));
         let f = self.finished.max(1) as f64;
         s.push_str(&format!(
             "交渉: 1試合あたり 提案 {:.1} / 対案 {:.1} / 成立 {:.1}（うち対案での成立 {:.1}）
@@ -141,6 +210,7 @@ pub fn run_match(
 
     let t0 = std::time::Instant::now();
     let mut buf: Vec<Action> = Vec::with_capacity(64);
+    let mut decision_us: Vec<Vec<u32>> = vec![Vec::new(); n];
 
     let perms = permutations(n);
     for gi in 0..games {
@@ -154,13 +224,18 @@ pub fn run_match(
 
         let mut g = Game::with_config(n as u8, seed, cfg);
         let mut actions = 0usize;
+        // 出来事の配信は、受けたいボットが 1 体でもいる時だけ（旧ボットには余計な仕事）
+        let any_events = bots.iter().any(|b| b.wants_events());
+        let mut seq = 0u64;
         while !g.is_over() && actions < MAX_ACTIONS_PER_GAME && g.turn < MAX_TURNS_PER_GAME {
             g.legal_actions_into(&mut buf);
             debug_assert!(!buf.is_empty());
             let seat = g.to_act as usize;
             let b = bot_at_seat[seat];
             let view = View::new(&g, seat as PlayerId);
+            let td = std::time::Instant::now();
             let a = bots[b].decide(&view, &buf);
+            decision_us[b].push(td.elapsed().as_micros().min(u32::MAX as u128) as u32);
             match a {
                 Action::OfferTrade { .. } => offers += 1,
                 Action::CounterOffer { .. } => counters += 1,
@@ -168,7 +243,14 @@ pub fn run_match(
                 Action::AcceptCounter { .. } => counters_accepted += 1,
                 _ => {}
             }
-            g.apply(a);
+            if any_events {
+                let before = g.clone();
+                let rec = g.apply(a);
+                seq += 1;
+                notify_bots(bots, bot_at_seat, &before, &g, &rec, seq);
+            } else {
+                g.apply(a);
+            }
             actions += 1;
         }
         total_actions += actions as u64;
@@ -200,5 +282,6 @@ pub fn run_match(
         counters,
         confirmed,
         counters_accepted,
+        decision_us,
     }
 }

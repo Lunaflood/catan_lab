@@ -102,7 +102,8 @@ fn best_acceptor(
 /// 交易系の行動を「誰が誰に何を渡すか」に開く。
 ///
 /// `None` なら成立しない（払える相手が居ない / 提案者が対案を払えない）。
-fn resolve(
+/// 戻り値は `(from, to, give, want)`: `from` が `give` を出し `to` が `want` を出す。
+pub fn resolve(
     g: &Game,
     me: PlayerId,
     a: Action,

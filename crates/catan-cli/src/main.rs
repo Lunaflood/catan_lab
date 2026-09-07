@@ -5,11 +5,15 @@
 //!
 //! ボット名: random / weighted / vpgreedy
 
+use catan_ai::agent_v2::{AgentV2Bot, V2Config};
+use catan_ai::belief::BeliefConfig;
 use catan_ai::bots::{Bot, GreedyEvalBot, PlacementBot, RandomBot, SearchBot, VpGreedyBot, WeightedRandomBot};
 use catan_ai::harness::run_match;
 use catan_ai::eval::EvalWeights;
 use catan_ai::placement::PlacementWeights;
 use catan_core::game::GameConfig;
+
+mod v2tools;
 
 fn make_bot(name: &str, seed: u64) -> Option<Box<dyn Bot>> {
     Some(match name.to_ascii_lowercase().as_str() {
@@ -24,12 +28,32 @@ fn make_bot(name: &str, seed: u64) -> Option<Box<dyn Bot>> {
         // 深さ 1。GreedyEval との差は「深さ」ではなく「作りの違い」だけになるので、
         // 先読みの効きを切り分ける物差しになる
         // 自動調整した重み。配置の重みは既定のままの版と両方置いて、最後に比べる
-        "best" => Box::new(SearchBot::with_weights(seed, 2, EvalWeights::tuned(), PlacementWeights::tuned(), "最強候補")),
+        "best" | "baseline" => Box::new(SearchBot::with_weights(seed, 2, EvalWeights::tuned(), PlacementWeights::tuned(), "最強候補")),
         "bestp0" => Box::new(SearchBot::with_weights(seed, 2, EvalWeights::tuned(), PlacementWeights::default(), "最強候補(配置は既定)")),
         "beste" => Box::new(SearchBot::with_weights(seed, 2, EvalWeights::default(), PlacementWeights::tuned(), "配置だけ調整")),
-        "bestcheat" => Box::new(SearchBot::peeking(seed, EvalWeights::tuned(), PlacementWeights::tuned())),
         "bestnarrow" => Box::new(SearchBot::narrow_shapes(seed, EvalWeights::tuned(), PlacementWeights::tuned())),
+        "candidate" => Box::new(SearchBot::candidate(seed, 3, 3)),
+        "bestw8" => Box::new(SearchBot::tuned_worlds(seed, 8, EvalWeights::tuned(), PlacementWeights::tuned())),
+        "bestd3" => Box::new(SearchBot::with_weights(seed, 3, EvalWeights::tuned(), PlacementWeights::tuned(), "tuned-depth3")),
         "bestw3" => Box::new(SearchBot::tuned_worlds(seed, 3, EvalWeights::tuned(), PlacementWeights::tuned())),
+        // v2 の対照。設計書作成時の max（2手読み・推定3通り）を凍結した別名
+        "v2_control" => Box::new(catan_ai::bots::v2_control(seed)),
+        // v2（観測だけを受け取る推定つきエージェント）とそのアブレーション
+        "v2" => Box::new(AgentV2Bot::new(seed, V2Config::default(), "v2")),
+        "v2_nohazard" => Box::new(AgentV2Bot::new(seed, V2Config { use_hazard: false, ..V2Config::default() }, "v2-ハザードなし")),
+        "v2_nohist" => Box::new(AgentV2Bot::new(seed, V2Config { belief: BeliefConfig::no_history(), ..V2Config::default() }, "v2-履歴なし")),
+        "v2_dur" => Box::new(AgentV2Bot::new(seed, V2Config { belief: BeliefConfig::duration_only(), ..V2Config::default() }, "v2-期間だけ")),
+        "v2_feat" => Box::new(AgentV2Bot::new(seed, V2Config { belief: BeliefConfig::features_only(), ..V2Config::default() }, "v2-機会あり")),
+        "v2_hw5k" => Box::new(AgentV2Bot::new(seed, V2Config { hazard_weight: 5_000.0, ..V2Config::default() }, "v2-hw5k")),
+        "v2_hw100k" => Box::new(AgentV2Bot::new(seed, V2Config { hazard_weight: 100_000.0, ..V2Config::default() }, "v2-hw100k")),
+        "v2_ht0" => Box::new(AgentV2Bot::new(seed, V2Config { hazard_threat: 0.0, ..V2Config::default() }, "v2-ht0")),
+        "v2_ht10" => Box::new(AgentV2Bot::new(seed, V2Config { hazard_threat: 10.0, ..V2Config::default() }, "v2-ht10")),
+        "v2_s1" => Box::new(AgentV2Bot::new(seed, V2Config { samples: 1, ..V2Config::default() }, "v2-s1")),
+        "v2_s6" => Box::new(AgentV2Bot::new(seed, V2Config { samples: 6, ..V2Config::default() }, "v2-s6")),
+        // M4: 相手の手番のロールアウトで葉を評価（研究段階）
+        "v2_roll" => Box::new(AgentV2Bot::new(seed, V2Config { rollout_mix: 0.5, rollouts: 1, ..V2Config::default() }, "v2-roll0.5")),
+        "v2_roll1" => Box::new(AgentV2Bot::new(seed, V2Config { rollout_mix: 1.0, rollouts: 1, ..V2Config::default() }, "v2-roll1.0")),
+        "v2_roll2" => Box::new(AgentV2Bot::new(seed, V2Config { rollout_mix: 0.5, rollouts: 2, ..V2Config::default() }, "v2-roll0.5x2")),
         // 難易度の段階（Web の対戦相手と同じ物）
         "lv0" | "easy" => catan_ai::bots::bot_for_level(0, seed),
         "lv1" | "normal" => catan_ai::bots::bot_for_level(1, seed),
@@ -70,6 +94,9 @@ fn main() {
         "eval-ablate" => eval_ablate(&args[1..]),
         "eval-sweep" => eval_sweep(&args[1..]),
         "trial" => trial(&args[1..]),
+        "v2-calib" => v2tools::calib(&args[1..], &make_bot),
+        "v2-fit" => v2tools::fit(&args[1..], &make_bot),
+        "v2-explain" => v2tools::explain(&args[1..]),
         other => {
             eprintln!("知らないコマンド: {other}\n{USAGE}");
             std::process::exit(2);
@@ -85,6 +112,9 @@ const USAGE: &str = "\
   catan sweep <項目> <値,値,...> [試合数] [--seed S]   重みを掃引する
   catan eval-ablate [試合数]                         評価関数の項目の寄与を測る
   catan eval-sweep <項目> <値,...> [試合数] [--seed S]
+  catan v2-calib [--games N] [--seed S] [--bots a,b,c,d] [--particles P] [--only-full] [--no-hazard]
+  catan v2-fit [--games N] [--seed S] [--bots a,b,c,d]     相手モデルの使用率を実測
+  catan v2-explain [--seed S] [--every K]                   v2 の判断の説明を出す
   catan match <bot> <bot> [<bot>] [--games N] [--seed S] [--no-trade]
                                   [--narrow-offers] [--turn-ms MS | --no-time-limit] [--tick-ms MS]
 
@@ -370,6 +400,7 @@ fn trial(args: &[String]) {
     let mut games = 800usize;
     let mut seed = 4242u64;
     let mut depth = 2u32;
+    let mut cfg = GameConfig::default();
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -387,6 +418,7 @@ fn trial(args: &[String]) {
             }
             "--games" => { i += 1; games = args[i].parse().expect("数値"); }
             "--seed" => { i += 1; seed = args[i].parse().expect("数値"); }
+            "--no-time-limit" => cfg.turn_time_limit_ms = None,
             "--depth" => { i += 1; depth = args[i].parse().expect("数値"); }
             other => panic!("知らない引数: {other}"),
         }
@@ -398,7 +430,7 @@ fn trial(args: &[String]) {
         Box::new(SearchBot::with_weights(3, depth, EvalWeights::tuned(), PlacementWeights::tuned(), "現行")),
         Box::new(SearchBot::with_weights(4, depth, EvalWeights::tuned(), PlacementWeights::tuned(), "現行")),
     ];
-    let r = run_match(&mut bots, games, seed, GameConfig::default());
+    let r = run_match(&mut bots, games, seed, cfg);
     println!(
         "RESULT win={:.5} se={:.5} vp={:.3} stall={:.4} games={}",
         r.win_rate(0),

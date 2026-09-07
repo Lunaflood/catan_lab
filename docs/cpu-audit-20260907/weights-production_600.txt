@@ -1,0 +1,2 @@
+C:\catan_lab\target\audit\release\catan.exe trial --set production=600 --games 480 --seed 850000 --no-time-limit
+RESULT win=0.28958 se=0.02070 vp=7.335 stall=0.0000 games=480

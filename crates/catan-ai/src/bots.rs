@@ -24,6 +24,13 @@ pub trait Bot: Send {
     fn decide(&mut self, view: &View, actions: &[Action]) -> Action;
     /// 各対局の開始時。決定的にするため seed を配る。
     fn reset(&mut self, _seed: u64) {}
+    /// 出来事の配信を受けたいか。`true` なら、ホストは**全員の行動**を
+    /// [`Bot::observe`] で届ける（自分の手番以外も）。旧ボットは `false` のまま。
+    fn wants_events(&self) -> bool {
+        false
+    }
+    /// 席ごとに投影された出来事。`wants_events()` が真のボットにだけ届く。
+    fn observe(&mut self, _ev: &catan_core::observation::ObservedEvent) {}
 }
 
 // =========================================================================
@@ -378,8 +385,6 @@ pub struct SearchBot {
     keep_mul: f32,
     /// 伏せカードの引き直しを何回やって平均するか。1 が従来
     worlds: u32,
-    /// 相手の資源の中身を覗く（実卓ではできない）。隠す代償を測るための刻み
-    see_hands: bool,
     /// 多めに積む形（3:1 / 1:3 / 2:2）を **考えない**。
     /// 生成を広げたことが効いているかを、同じ盤・同じ規則の下で測るための刻み
     narrow_shapes: bool,
@@ -399,16 +404,8 @@ impl SearchBot {
             keep_mul: 1.0,
             worlds: 1,
             narrow_shapes: false,
-            see_hands: false,
             label: format!("Search(d={depth})"),
         }
-    }
-
-    /// 相手の資源の中身が見える版（隠す前の振る舞い。代償の測定用）
-    pub fn peeking(seed: u64, w: EvalWeights, pw: PlacementWeights) -> Self {
-        let mut b = Self::with_weights(seed, 2, w, pw, "最強候補(手札を覗く)");
-        b.see_hands = true;
-        b
     }
 
     /// 多めに積む形を考えない版（生成を広げた効果を測る）
@@ -434,6 +431,14 @@ impl SearchBot {
         b
     }
 
+    /// 公平な推定局面を平均する強化候補。比較実験用。
+    pub fn candidate(seed: u64, depth: u32, worlds: u32) -> Self {
+        let mut b = Self::with_weights(seed, depth, EvalWeights::tuned(), PlacementWeights::tuned(), "candidate");
+        b.worlds = worlds;
+        b.label = format!("candidate-d{depth}-w{worlds}");
+        b
+    }
+
     /// 重みを差し替えた版（重みの自動調整に使う）
     pub fn with_weights(seed: u64, depth: u32, w: EvalWeights, pw: PlacementWeights, label: &str) -> Self {
         SearchBot {
@@ -444,7 +449,6 @@ impl SearchBot {
             keep_mul: 1.0,
             worlds: 1,
             narrow_shapes: false,
-            see_hands: false,
             label: label.to_string(),
         }
     }
@@ -468,7 +472,6 @@ impl SearchBot {
             keep_mul: 1.0,
             worlds: 1,
             narrow_shapes: false,
-            see_hands: false,
             label: format!("Search(d={depth},n={max_nodes})"),
         }
     }
@@ -530,7 +533,7 @@ impl Bot for SearchBot {
         if self.worlds > 1 {
             return best_action_worlds(v, v.me, actions, &self.w, &self.lim, &mut self.rng, self.worlds);
         }
-        let g = v.determinize_with(&mut self.rng, !self.see_hands);
+        let g = v.determinize(&mut self.rng);
         best_action(&g, v.me, actions, &self.w, &self.lim)
     }
 }
@@ -567,9 +570,20 @@ pub fn bot_for_level(level: u32, seed: u64) -> Box<dyn Bot> {
         // ここを「既定の重み + 2 手読み」にすると ふつう と近すぎた（16.7% 対 21.1%）。
         // 重みを良くして深さを 1 に留めた方が、段階の間隔がきれいに開く（実測 17.7% 対 31.1%）
         2 => Box::new(GreedyEvalBot::with_weights(seed, EvalWeights::tuned(), "つよい")),
-        // 2 手読み + 自動調整した重み
-        _ => Box::new(SearchBot::with_weights(
-            seed, 2, EvalWeights::tuned(), PlacementWeights::tuned(), "さいきょう",
-        )),
+        // v2（観測だけを受け取る推定つきエージェント）。凍結した旧最高難易度 v2_control×3 に対し、
+        // 事前登録した最終テスト（未使用 seed）で 4 人 4,800 局・3 人 1,200 局とも区間が帰無仮説を上回った
+        // （docs/cpu-v2/README.md）。公開の出来事から相手の資源を数え上げ、発展カードの保持履歴から
+        // 隠れ勝利点と勝利ハザードを推定して交易・盗賊の判断に使う。
+        _ => Box::new(crate::agent_v2::AgentV2Bot::new(seed, crate::agent_v2::V2Config::default(), "さいきょう")),
     }
+}
+
+/// v2 の対照として凍結した「設計書作成時の最高難易度」（2026-09-07）。
+///
+/// `bot_for_level(3)` と同じ物。名前だけを変えてある。**途中で更新しない**
+/// （docs/cpu-v2/m0-baseline.md）。
+pub fn v2_control(seed: u64) -> SearchBot {
+    let mut b = SearchBot::tuned_worlds(seed, 3, EvalWeights::tuned(), PlacementWeights::tuned());
+    b.label = "v2_control".into();
+    b
 }

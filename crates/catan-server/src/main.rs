@@ -71,7 +71,11 @@ fn main() {
 fn handle(mut stream: TcpStream, rooms: Rooms, root: PathBuf) {
     let Some(req) = http::read_request(&stream) else { return };
 
-    if let Some(rest) = req.path.strip_prefix("/api/") {
+    // 対戦の口は**どの階層の下でも**受ける。
+    // UI は相対パス（`api/...`）で呼ぶので、`/colonist/` から開くと
+    // `/colonist/api/create` に飛ぶ。ここで拾わないとオンライン対戦だけが 404 になる
+    if let Some(i) = req.path.find("/api/") {
+        let rest = &req.path[i + 5..];
         api(&mut stream, rest, &req, &rooms);
         return;
     }
@@ -81,7 +85,13 @@ fn handle(mut stream: TcpStream, rooms: Rooms, root: PathBuf) {
 // ---------------------------------------------------------------- 静的ファイル
 
 fn serve_static(stream: &mut TcpStream, path: &str, root: &Path) {
-    let rel = if path == "/" { "index.html" } else { path.trim_start_matches('/') };
+    // 「/」で終わる指定はその中の index.html を配る（/colonist/ など）
+    let rel: String = if path.ends_with('/') {
+        format!("{}index.html", path.trim_start_matches('/'))
+    } else {
+        path.trim_start_matches('/').to_string()
+    };
+    let rel = rel.as_str();
     // 上へ辿る指定は受け付けない
     let mut safe = PathBuf::new();
     for c in Path::new(rel).components() {

@@ -7,12 +7,17 @@
 //! - 勝率だけでなく **ヘクスからの資源獲得・建てた駒の種類比率** を見る。
 //!   どこが効いているかはここに出る（Guhe & Lascarides 2014）。
 
+pub mod agent_v2;
+pub mod belief;
 pub mod bots;
 pub mod eval;
 pub mod harness;
+pub mod history;
+pub mod opponent;
 pub mod placement;
 pub mod prune;
 pub mod search;
+pub mod search_v2;
 pub mod trade;
 
 pub use bots::{Bot, GreedyEvalBot, PlacementBot, RandomBot, SearchBot, VpGreedyBot, WeightedRandomBot};

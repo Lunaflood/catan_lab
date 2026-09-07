@@ -21,6 +21,8 @@
 use crate::action::{Bundle, DevCard, Prompt, DEV_CARDS, DEV_DECK_COMPOSITION, NUM_DEV_KINDS};
 use crate::board::{Board, PlayerId, NUM_RESOURCES};
 use crate::game::{Game, TradeState, BANK_PER_RESOURCE, MAX_PLAYERS};
+use crate::observation::{Observation, LEGACY_APP};
+use crate::action::Action;
 use crate::rng::Rng;
 
 pub struct View<'a> {
@@ -75,9 +77,9 @@ impl<'a> View<'a> {
         self.game.largest_army_owner
     }
 
-    /// 相手の資源の手札。方針として公開している（詳細はモジュールの表）。
-    pub fn hand(&self, p: PlayerId) -> Bundle {
-        self.game.players[p as usize].hand
+    /// 自分の資源だけを返す。相手の内訳を読む入口は設けない。
+    pub fn my_hand(&self) -> Bundle {
+        self.game.players[self.me as usize].hand
     }
     pub fn hand_size(&self, p: PlayerId) -> u8 {
         self.game.players[p as usize].hand_size()
@@ -127,6 +129,16 @@ impl<'a> View<'a> {
         self.game.actual_vp(self.me)
     }
 
+    // ---- 観測への投影（v2 エージェント用）----
+
+    /// この席の観測を作る。`legal` はこの席に提示する合法手。
+    ///
+    /// v2 エージェントは `View` を受け取らず、ここで作った [`Observation`] だけを受け取る。
+    /// 秘密を消した局面（[`crate::observer::redact`]）と本人だけの私的状態に分けて渡す。
+    pub fn observe(&self, legal: &[Action], seq: u64) -> Observation {
+        crate::observer::observe(self.game, self.me, legal, LEGACY_APP, seq)
+    }
+
     // ---- 推論 ----
 
     /// まだ見ていない発展カードの内訳（= 山 + 相手の手札）。
@@ -155,13 +167,11 @@ impl<'a> View<'a> {
     /// 相手の発展カードは「枚数はそのまま・種類は [`Self::unseen_dev`] から無作為に」
     /// 割り当て直す。探索はこの上で行う（determinization）。
     pub fn determinize(&self, rng: &mut Rng) -> Game {
-        self.determinize_with(rng, true)
-    }
-
-    /// `hide_hands = false` にすると、相手の資源の中身をそのまま覗く。
-    /// **実卓ではできない**。情報を隠すことの代償を測るためだけに残してある。
-    pub fn determinize_with(&self, rng: &mut Rng, hide_hands: bool) -> Game {
         let mut g = self.game.clone();
+        // 本番の未来の乱数列を探索へ渡さない。推論用 RNG のみから生成。
+        g.rng_dice = Rng::new(rng.next_u32() as u64);
+        g.rng_dev = Rng::new(rng.next_u32() as u64);
+        g.rng_steal = Rng::new(rng.next_u32() as u64);
 
         // 未知の札をばらして混ぜる
         let unseen = self.unseen_dev();
@@ -208,9 +218,7 @@ impl<'a> View<'a> {
         }
         g.dev_deck = deck;
 
-        if hide_hands {
-            self.reshuffle_hands(&mut g, rng);
-        }
+        self.reshuffle_hands(&mut g, rng);
         g
     }
 
@@ -233,25 +241,24 @@ impl<'a> View<'a> {
             pool[r] = total;
         }
 
-        // 公開されている条件ぶんを先に取り分ける
+        // 同じ札を複数の代替条件で使えるため、和ではなく資源別の最大値。
+        // 承諾済みの相手が支払えることも公開された情報。
         let mut fixed = [[0u8; NUM_RESOURCES]; MAX_PLAYERS];
         if let Some(t) = g.trade {
-            let mut reserve = |p: PlayerId, b: &Bundle, pool: &mut [u8; NUM_RESOURCES]| {
-                if p == self.me {
-                    return;
-                }
-                for r in 0..NUM_RESOURCES {
-                    let n = b[r].min(pool[r]);
-                    fixed[p as usize][r] += n;
-                    pool[r] -= n;
-                }
-            };
-            reserve(t.proposer, &t.give, &mut pool);
+            fixed[t.proposer as usize] = t.give;
             for q in 0..g.n() {
-                for alt in t.counters[q].iter().flatten() {
-                    reserve(q as PlayerId, &alt.0, &mut pool);
-                    break; // 1 本ぶん取り分ければ実行可能性は保てる
+                if t.accepted[q] { fixed[q] = t.want; }
+                for (give, _) in t.counters[q].iter().flatten() {
+                    for r in 0..NUM_RESOURCES { fixed[q][r] = fixed[q][r].max(give[r]); }
                 }
+            }
+        }
+        fixed[self.me as usize] = [0; NUM_RESOURCES];
+        for q in 0..g.n() {
+            assert!(fixed[q].iter().map(|&n| n as usize).sum::<usize>() <= g.players[q].hand_size() as usize,
+                "公開された条件が手札枚数と矛盾");
+            for r in 0..NUM_RESOURCES {
+                pool[r] = pool[r].checked_sub(fixed[q][r]).expect("公開された条件が資源総数と矛盾");
             }
         }
 
@@ -272,19 +279,11 @@ impl<'a> View<'a> {
             let size = g.players[q].hand_size() as usize;
             let mut hand = fixed[q];
             let taken: usize = hand.iter().map(|&n| n as usize).sum();
-            if taken > size {
-                continue; // 取り分けだけで超えるのは異常。その人は触らない
-            }
             for _ in 0..(size - taken) {
-                if k >= bag.len() {
-                    break;
-                }
                 hand[bag[k] as usize] += 1;
                 k += 1;
             }
-            if hand.iter().map(|&n| n as usize).sum::<usize>() == size {
-                g.players[q].hand = hand;
-            }
+            g.players[q].hand = hand;
         }
     }
 }

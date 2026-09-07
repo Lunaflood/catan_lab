@@ -4,6 +4,10 @@
 
 調査レポート: [docs/catan-research.md](docs/catan-research.md)
 
+次世代CPU v2（観測だけを受け取る推定つきエージェント）: [設計書](docs/cpu-optimal-design.md) / [別AIへの開始指示](docs/cpu-optimal-handoff.md) / **[実装記録・実験結果・採否](docs/cpu-v2/README.md)**（M0〜M3 実装済み、M4 は研究段階）。
+
+最新のCPU再監査・強化結果: [公平性の修正と比較対戦](docs/cpu-audit-20260907/README.md)。最高難易度は2手読み・手札推定3通り。以下に残る以前の勝率は過去の測定条件の記録で、現在の勝率や最適手の保証ではありません。
+
 ## 構成
 
 ```

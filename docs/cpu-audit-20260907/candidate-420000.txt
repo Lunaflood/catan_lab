@@ -1,0 +1,11 @@
+target/release/catan.exe match candidate best best best --games 480 --seed 420000 --no-time-limit
+対戦: candidate vs best vs best vs best / 交易 あり / 持ち時間 無制限
+480 戦 (決着 480) / 平均 77.0 手番 / 3 ゲーム毎秒
+帰無仮説の勝率 = 25.0%（4 人）
+  candidate-d3-w3  勝率  21.9% ± 1.9  平均VP 7.18  (z = -1.7)
+  最強候補             勝率  25.0% ± 2.0  平均VP 7.35  (z = +0.0)
+  最強候補             勝率  28.1% ± 2.1  平均VP 7.27  (z = +1.5)
+  最強候補             勝率  25.0% ± 2.0  平均VP 7.24  (z = +0.0)
+交渉: 1試合あたり 提案 119.1 / 対案 98.6 / 成立 46.7（うち対案での成立 24.0）
+
+seconds=166.47038674354553

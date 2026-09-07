@@ -11,6 +11,8 @@ pub mod board;
 pub mod coord;
 pub mod game;
 pub mod longest_road;
+pub mod observation;
+pub mod observer;
 pub mod rng;
 pub mod topology;
 pub mod view;
@@ -21,3 +23,4 @@ pub use topology::{EdgeId, NodeId, TileId, Topology, NUM_EDGES, NUM_NODES, NUM_T
 pub use action::{Action, ActionRecord, Bundle, DevCard, Outcome, Prompt};
 pub use game::{Game, GameConfig, PlayerState};
 pub use view::View;
+pub use observation::{Observation, ObservedEvent, ObservationProfile, VisibleEvent, LEGACY_APP};

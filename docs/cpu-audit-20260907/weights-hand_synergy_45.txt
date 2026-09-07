@@ -1,0 +1,2 @@
+C:\catan_lab\target\audit\release\catan.exe trial --set hand_synergy=45 --games 480 --seed 850000 --no-time-limit
+RESULT win=0.25417 se=0.01987 vp=7.037 stall=0.0000 games=480

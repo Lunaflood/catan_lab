@@ -63,6 +63,8 @@ struct Session {
     rolls: [u32; 13],
     last: LastAction,
     seq: u32,
+    /// 出来事の順序番号（v2 CPU への配信用）
+    evseq: u64,
 }
 
 thread_local! {
@@ -88,6 +90,22 @@ pub extern "C" fn out_len() -> usize {
 
 // ---------------------------------------------------------------- ゲーム操作
 
+/// 行動を適用し、出来事を受けたい CPU（v2）へ席ごとに投影して配る。
+/// 人間の席のボットは作られていても使われないので、配っても無害。
+fn apply_notify(sess: &mut Session, a: Action) -> catan_core::action::ActionRecord {
+    let before = sess.game.clone();
+    let rec = sess.game.apply(a);
+    sess.evseq += 1;
+    let seq = sess.evseq;
+    for seat in 0..sess.game.n().min(sess.bots.len()) {
+        if sess.bots[seat].wants_events() {
+            let ev = catan_core::observer::project_event(&before, &sess.game, &rec, seat as u8, catan_core::observation::LEGACY_APP, seq);
+            sess.bots[seat].observe(&ev);
+        }
+    }
+    rec
+}
+
 /// 新しい対局を始める。`humans_mask` はビットで人間の席を指定（bit0 = 席0）。
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
@@ -108,6 +126,10 @@ pub extern "C" fn game_new(
         // 交渉が終わらなくなる心配は無い ── 断られた条件は同じ手番で出し直せず、
         // 生成される提案は 120 通りしかないので、いつか出し尽くして手番は終わる
         turn_time_limit_ms: None,
+        // 提案の諾否は、**人間を最後に**聞く。
+        // CPU は即答するので、人間が答える時点で他全員の返事が出そろっている
+        // ＝ 一斉に聞かれたのと同じ見え方になる（colonist と同じ手触り）。
+        answer_last_mask: humans_mask as u8,
         ..GameConfig::default()
     };
     let n = players.clamp(3, 4) as u8;
@@ -126,7 +148,8 @@ pub extern "C" fn game_new(
     let bots: Vec<Box<dyn Bot>> = (0..n)
         .map(|i| {
             let lv = (levels >> (i * 2)) & 0b11;
-            bot_for_level(lv, dice_seed as u64 * 31 + i as u64)
+            // 推論用の乱数は本番の出目・発展・盗みの種に依存させない。
+            bot_for_level(lv, 0xC47A_2026 + i as u64)
         })
         .collect();
     let humans = (0..n).map(|i| humans_mask & (1 << i) != 0).collect();
@@ -142,6 +165,7 @@ pub extern "C" fn game_new(
             rolls: [0; 13],
             last: LastAction::default(),
             seq: 0,
+            evseq: 0,
         })
     });
     refresh();
@@ -182,7 +206,7 @@ pub extern "C" fn apply_index(i: u32) -> u32 {
         };
         let before = sess.game.board.robber;
         let hands = hands_of(&sess.game);
-        let rec = sess.game.apply(a);
+        let rec = apply_notify(sess, a);
         note(sess, rec.actor, a, rec.result, before, hands);
         sess.game.legal_actions_into(&mut sess.actions);
         1
@@ -210,7 +234,7 @@ pub extern "C" fn bot_step() -> u32 {
         };
         let before = sess.game.board.robber;
         let hands = hands_of(&sess.game);
-        let rec = sess.game.apply(a);
+        let rec = apply_notify(sess, a);
         note(sess, rec.actor, a, rec.result, before, hands);
         sess.game.legal_actions_into(&mut sess.actions);
         1
@@ -239,7 +263,7 @@ pub extern "C" fn offer_custom(
         let a = Action::OfferTrade { give, want };
         let before = sess.game.board.robber;
         let hands = hands_of(&sess.game);
-        let rec = sess.game.apply(a);
+        let rec = apply_notify(sess, a);
         note(sess, rec.actor, a, rec.result, before, hands);
         sess.game.legal_actions_into(&mut sess.actions);
         1
@@ -271,7 +295,7 @@ pub extern "C" fn counter_custom(
         let a = Action::CounterOffer { give, want };
         let before = sess.game.board.robber;
         let hands = hands_of(&sess.game);
-        let rec = sess.game.apply(a);
+        let rec = apply_notify(sess, a);
         note(sess, rec.actor, a, rec.result, before, hands);
         sess.game.legal_actions_into(&mut sess.actions);
         1
@@ -310,7 +334,7 @@ pub extern "C" fn counter_alt(
         let a = Action::CounterAlt { give, want };
         let before = sess.game.board.robber;
         let hands = hands_of(&sess.game);
-        let rec = sess.game.apply(a);
+        let rec = apply_notify(sess, a);
         note(sess, rec.actor, a, rec.result, before, hands);
         sess.game.legal_actions_into(&mut sess.actions);
         1
@@ -338,7 +362,7 @@ pub extern "C" fn counter_finish() -> u32 {
         let a = Action::CounterOffer { give, want };
         let before = sess.game.board.robber;
         let hands = hands_of(&sess.game);
-        let rec = sess.game.apply(a);
+        let rec = apply_notify(sess, a);
         note(sess, rec.actor, a, rec.result, before, hands);
         sess.game.legal_actions_into(&mut sess.actions);
         1
@@ -363,7 +387,7 @@ pub extern "C" fn counter_alt_remove(i: u32) -> u32 {
         let a = Action::CounterAltRemove(i as u8);
         let before = sess.game.board.robber;
         let hands = hands_of(&sess.game);
-        let rec = sess.game.apply(a);
+        let rec = apply_notify(sess, a);
         note(sess, rec.actor, a, rec.result, before, hands);
         sess.game.legal_actions_into(&mut sess.actions);
         1
@@ -478,7 +502,7 @@ pub extern "C" fn maritime_bulk(
             for _ in 0..(give[i] / rate) {
                 let a = Action::MaritimeTrade { give: *r, count: rate, take: queue[qi] };
                 qi += 1;
-                sess.game.apply(a);
+                apply_notify(sess, a);
                 last = a;
             }
         }
@@ -543,7 +567,7 @@ pub extern "C" fn discard_custom(d0: u32, d1: u32, d2: u32, d3: u32, d4: u32) ->
         let a = Action::Discard(b);
         let before = sess.game.board.robber;
         let hands = hands_of(&sess.game);
-        let rec = sess.game.apply(a);
+        let rec = apply_notify(sess, a);
         note(sess, rec.actor, a, rec.result, before, hands);
         sess.game.legal_actions_into(&mut sess.actions);
         1
@@ -955,13 +979,10 @@ pub extern "C" fn state_json() -> *const u8 {
                     } else if t.accepted[p] {
                         j.key("state");
                         j.str("ACCEPTED");
-                    } else if {
-                        // 返答は提案者の次の席から順に回る。
-                        // その回転での順位が answered 未満なら「もう答えた」＝ 断った
-                        let n = g.num_players as usize;
-                        let pos = (p + n - t.proposer as usize - 1) % n;
-                        pos < t.answered as usize
-                    } {
+                    } else if t.responded[p] {
+                        // 🔴 以前は「提案者の次から席順に回る」前提で順位から推測していたが、
+                        //    人間を最後に回すようにしたので席順では当たらない。
+                        //    誰が答えたかは `responded` を直接見る
                         j.key("state");
                         j.str("REJECTED");
                     } else {
@@ -1120,9 +1141,14 @@ pub extern "C" fn state_json() -> *const u8 {
                     None => j.raw("null"),
                 }
             }
+            // 奪った資源の種類は当事者（奪った人・奪われた人）にだけ見せる。
+            // 第三者の席には「1 枚移った」ことだけ（裏向きの札）を伝える
             j.key("stolen");
+            let human = |q: PlayerId| sess.humans.get(q as usize).copied().unwrap_or(false);
+            let party = human(l.actor) || l.victim.map_or(false, human);
             match l.stolen {
-                Some(r) => j.str(res_key(r)),
+                Some(r) if party || g.is_over() => j.str(res_key(r)),
+                Some(_) => j.str("HIDDEN"),
                 None => j.raw("null"),
             }
             j.obj_end();
