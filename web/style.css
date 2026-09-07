@@ -1435,6 +1435,10 @@ aside > div .chip, #drawer .chip { font-size: 12px; padding: 1px 7px 1px 4px; ga
   padding: 24px; overflow-y: auto;
 }
 #home[hidden] { display: none; }
+/* 🔴 `hidden` は UA の `display:none` でしかないので、
+   `.hrow{display:flex}` のような指定に負ける（#app・#drawer でも踏んだ罠）。
+   待機所の中はまとめて明示しておく */
+#home [hidden] { display: none !important; }
 
 /* ⚠ 名前は「手札のカード(.hcard)」と必ず分けること。
    同じにしていたら、手札側の `flex:1 1 0` と `aspect-ratio:2/3` を拾って
@@ -1540,9 +1544,29 @@ aside > div .chip, #drawer .chip { font-size: 12px; padding: 1px 7px 1px 4px; ga
 .hbtn:hover { background: #5ee0ce; }
 .hbtn.small { margin-top: 8px; padding: 7px 12px; font-size: 12.5px;
   color: #4c5f70; background: rgba(16, 34, 48, .06); border-color: rgba(16, 34, 48, .16); }
-/* 合言葉は読み上げて伝えるものなので、字間を空けて大きく出す */
-.hcode { margin: 4px 0 10px; text-align: center; font-size: 13px; color: #4c5f70; }
-.hcode b { font-size: 26px; letter-spacing: .3em; color: #16232e; margin-left: 8px; }
+/* 友達がすることは「リンクを開く」だけにしたいので、そこを主役にする。
+   合言葉は、リンクが使えなかった時のための控え */
+.hshare {
+  margin: 4px 0 14px; padding: 12px; border-radius: 12px;
+  background: rgba(69, 211, 192, .12); border: 1px solid rgba(42, 162, 148, .35);
+}
+.hshare-t { font-size: 12.5px; font-weight: 700; color: #16232e; margin-bottom: 8px; }
+.hshare input {
+  width: 100%; padding: 8px 10px; margin-bottom: 8px; font-size: 12.5px;
+  border-radius: 8px; color: #16232e; background: #fff;
+  border: 1px solid rgba(16, 34, 48, .2);
+}
+.hshare .hbtn { width: 100%; }
+.hshare-s { margin-top: 8px; font-size: 11.5px; color: #56687a; }
+.hshare-s b { font-size: 15px; letter-spacing: .22em; color: #16232e; }
+
+/* 招待リンクから来た人向け */
+.hinvite {
+  padding: 10px; margin-bottom: 4px; border-radius: 10px; text-align: center;
+  font-size: 13px; color: #16232e; background: rgba(69, 211, 192, .14);
+}
+.hinvite b { font-size: 20px; letter-spacing: .24em; margin-left: 6px; }
+.hbtn.big { padding: 13px; font-size: 16px; }
 .herr {
   margin-bottom: 10px; padding: 9px 12px; border-radius: 10px; font-size: 13px;
   color: #8c1d0a; background: rgba(208, 42, 22, .12); border: 1px solid rgba(208, 42, 22, .3);

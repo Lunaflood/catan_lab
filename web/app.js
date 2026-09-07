@@ -3579,6 +3579,13 @@ function saveLobby() {
 function renderHome() {
   document.getElementById("myname").value = lobby.name;
 
+  // 招待リンクから来た人に 1 人用の設定を見せると、
+  // どれを押せば友達と繋がるのか分からなくなる。参加するまでは隠す
+  const invited = !net.on && !!new URLSearchParams(location.search).get("join");
+  document.getElementById("hplayers").parentElement.hidden = invited;
+  document.querySelector("#home .hsub").hidden = invited;
+  document.getElementById("hstart").hidden = invited;
+
   const seg = document.getElementById("hplayers");
   seg.innerHTML = "";
   for (const n of [3, 4]) {
@@ -3596,7 +3603,7 @@ function renderHome() {
 
   const box = document.getElementById("hseats");
   box.innerHTML = "";
-  const seatList = net.on ? [] : lobby.members;
+  const seatList = net.on || invited ? [] : lobby.members;
   seatList.forEach((m, i) => {
     const d = document.createElement("div");
     d.className = "hseat";
@@ -3622,9 +3629,15 @@ function renderHome() {
   });
 
   const lv = lobby.members.filter((m) => m.kind === "cpu").map((m) => LEVEL_NAMES[m.level]);
-  document.getElementById("hnote").textContent = net.on
-    ? `合言葉 ${net.room}　この文字を友達に伝えてください　${BUILD}`
-    : `${lobby.members.length} 人（あなた + CPU ${lv.length} 体: ${lv.join("・")}）　${BUILD}`;
+  const note = document.getElementById("hnote");
+  if (invited) {
+    note.textContent = `名前を決めて「参加する」を押してください　${BUILD}`;
+  } else if (net.on) {
+    note.textContent = `全員そろったら「はじめる」　空いた席は CPU が入ります　${BUILD}`;
+  } else {
+    note.textContent =
+      `${lobby.members.length} 人（あなた + CPU ${lv.length} 体: ${lv.join("・")}）　${BUILD}`;
+  }
 
   renderOnlineBox();
 }
@@ -3650,15 +3663,24 @@ function renderOnlineBox() {
   }
 
   if (!net.on) {
+    // リンク（?join=XXXX）から来た人は、合言葉が入った状態で始める
+    const invited = new URLSearchParams(location.search).get("join") || "";
     box.insertAdjacentHTML(
       "beforeend",
-      `<div class="honl">
-         <button id="hcreate" class="hbtn">友達と遊ぶ部屋を作る</button>
-         <div class="hjoin">
-           <input id="hcode" type="text" maxlength="4" placeholder="合言葉" autocomplete="off">
-           <button id="hjoin" class="hbtn">入る</button>
-         </div>
-       </div>`
+      invited
+        ? `<div class="honl">
+             <div class="hinvite">合言葉 <b>${escapeHtml(invited.toUpperCase())}</b> の部屋に招待されています</div>
+             <button id="hjoin" class="hbtn big">この部屋に参加する</button>
+             <input id="hcode" type="hidden" value="${escapeHtml(invited)}">
+             <button id="hcreate" class="hbtn small">招待を使わず、自分で部屋を作る</button>
+           </div>`
+        : `<div class="honl">
+             <button id="hcreate" class="hbtn">友達と遊ぶ部屋を作る</button>
+             <div class="hjoin">
+               <input id="hcode" type="text" maxlength="4" placeholder="合言葉" autocomplete="off">
+               <button id="hjoin" class="hbtn">入る</button>
+             </div>
+           </div>`
     );
     const go = (fn) => () => {
       net.err = "";
@@ -3676,7 +3698,9 @@ function renderOnlineBox() {
     return;
   }
 
-  // 部屋に居る時。参加者はサーバが配る一覧をそのまま出す
+  // 部屋に居る時。友達がすべきことは「リンクを開く」だけにしたいので、
+  // 合言葉より **送るリンクそのもの** を主役にする
+  const link = `${location.origin}${location.pathname}?join=${net.room}`;
   const who = net.members
     .map((m, i) => `<div class="hseat" style="--c:${PLAYER_INK[i % 4]}">
         <span class="sw"></span><span class="who">${escapeHtml(m.name)}</span></div>`)
@@ -3690,9 +3714,28 @@ function renderOnlineBox() {
     .join("");
   box.insertAdjacentHTML(
     "beforeend",
-    `<div class="hcode">合言葉 <b>${net.room}</b></div>${who}${cpus}
+    `<div class="hshare">
+       <div class="hshare-t">友達にこのリンクを送ってください</div>
+       <input id="hlink" type="text" readonly value="${escapeHtml(link)}">
+       <button id="hcopy" class="hbtn">リンクをコピー</button>
+       <div class="hshare-s">うまくいかないときは、合言葉 <b>${net.room}</b> を直接伝えてください</div>
+     </div>
+     <div class="hlabel hsub">この部屋の顔ぶれ</div>${who}${cpus}
      <button id="hleave" class="hbtn small">部屋を出る</button>`
   );
+  const copy = box.querySelector("#hcopy");
+  copy.addEventListener("click", async () => {
+    const input = document.getElementById("hlink");
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      // 安全でない繋ぎ方だと clipboard が使えない。選択状態にして手で写せるようにする
+      input.select();
+      document.execCommand && document.execCommand("copy");
+    }
+    copy.textContent = "コピーしました";
+    setTimeout(() => (copy.textContent = "リンクをコピー"), 1600);
+  });
   box.querySelectorAll("select[data-cpu]").forEach((sel) => {
     sel.addEventListener("change", (ev) => {
       api("settings", {
@@ -3939,7 +3982,7 @@ for (const [k, id] of ["seed", "seed2", "seed3", "seed4"].entries()) {
   document.getElementById(id).value = randomSeed(k);
 }
 /** この版の目印。画面に出して、どの版が動いているかを一目で分かるようにする */
-const BUILD = "v8";
+const BUILD = "v11";
 
 /**
  * 起動。
