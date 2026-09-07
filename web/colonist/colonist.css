@@ -1053,3 +1053,8 @@ header { display: none !important; }
    同じ左下に居るので重なるうえ、選んでいる最中に読む物ではない。
    （`#distbox` は HTML 上で `#actionbox` の後ろにあるので ~ で届く） */
 #app #actionbox.over-hand ~ #distbox { display: none; }
+
+/* 名前と本文が詰まって「レンカイと交易が成立」のように読めてしまうので、
+   名前の左右に僅かな余白を置く（色だけでは切れ目が読み取れない） */
+#app #loglines .line .txt > b:first-child { margin-right: .3em; }
+#app .pname-in { padding: 0 .12em; }
