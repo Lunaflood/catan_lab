@@ -1130,3 +1130,11 @@ header { display: none !important; }
 }
 #app #board .buildask .ba-b:hover .ba-c { filter: brightness(1.12); }
 #app #board .buildask .ba-b:active .ba-c { filter: brightness(.92); }
+
+/* ---------------------------------------------------------------- 手札の高さ
+   縦に伸ばしすぎていた。横幅はそのまま、**縦だけ**詰める。
+   （帯の高さも一緒に詰めないと、札の下に空きが残る） */
+#handbar { min-height: 120px; padding: 10px 12px; }
+#app #handbar .hcard { height: 94px !important; }
+#app #handbar .hcard .hglyph svg { width: 42px; height: 42px; }
+#app #handbar .hdev { min-height: 94px; }
