@@ -1286,3 +1286,58 @@ header { display: none !important; }
   78%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%, -54%) scale(.98); }
 }
+
+/* 預かっている答え。まだ押し直せることを言葉で書く
+   （光っているだけでは「もう決まった」のか「待っている」のか分からない） */
+#app #offers .oc-note {
+  margin-top: 5px; font-size: 11.5px; color: #4a5a68; text-align: right;
+}
+
+/* ---------------------------------------------------------------- プレイヤー欄の収まり
+   行を詰めたら中身が 3〜5px はみ出した（点数の丸と名前の縦積みが行より高い）。
+   🔴 文字を小さくして収めるのではなく、**丸と行間を詰める**。
+   名前と点数は一番よく読む物なので、読める大きさを残す。 */
+#app #players-panel .pl .pscore {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 1px; justify-content: center; overflow: hidden;
+}
+#app #players-panel .pl .pscore .vp {
+  width: 40px !important; height: 40px !important;
+  font-size: 20px !important; line-height: 40px !important;
+  -webkit-text-stroke: 2.5px #fff;
+}
+
+#app #players-panel .pl .pscore .vp i { font-size: .5em; font-style: normal; margin-left: 1px; }
+#app #players-panel .pl .pscore .name {
+  font-size: 12.5px !important; line-height: 1.15; font-weight: 700;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#app #players-panel .pl .pscore .me {
+  font-size: 9.5px !important; line-height: 1.15; opacity: .85;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 行からはみ出した分は隠さず、行を必要なだけ伸ばす（切れるより低い方が困る） */
+#app #players-panel .pl { height: auto !important; min-height: 78px !important; }
+/* 自分の欄も普通の高さでよい。大きくするのは手番の人だけ */
+#app #players-panel .pl.self { min-height: 78px !important; }
+
+/* ---------------------------------------------------------------- 目立たせるのは「手番の人」
+   自分の欄を明るくしていたが、自分の場所は「あなた」の字で分かる。
+   探しているのは**いま誰の番か**なので、そちらを明るくする。 */
+#app #players-panel .pl.self {
+  background: linear-gradient(var(--c-dim-a), var(--c-dim-b)) !important;
+  box-shadow: none;
+}
+#app #players-panel .pl.active {
+  background: linear-gradient(var(--c-panel-a), var(--c-panel-b)) !important;
+  box-shadow: inset 0 0 0 3px var(--c), 0 4px 14px rgba(0,0,0,.25) !important;
+}
+/* 手番の欄だけ、点数の丸と名前を一回り大きく */
+#app #players-panel .pl.active .pscore .vp {
+  width: 46px !important; height: 46px !important;
+  font-size: 23px !important; line-height: 46px !important;
+}
+#app #players-panel .pl.active .pscore .name { font-size: 13.5px !important; }
+#app #players-panel .pl.active { min-height: 90px !important; }
+/* 自分の欄は「あなた」の字と、名前の左の▶で分かるようにする */
+#app #players-panel .pl.self .pscore .me { font-weight: 800; color: #1b3d5c !important; }

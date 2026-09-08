@@ -3477,17 +3477,18 @@ document.addEventListener("click", (ev) => {
  */
 function renderOffers() {
   const box = document.getElementById("offers");
-  box.innerHTML = "";
+  const clear = () => { box.innerHTML = ""; box.dataset.sig = ""; };
   const t = state.trade;
   if (!t || state.prompt !== "DECIDE_TRADE") {
     answerMode = false;
     autoRejectSeq = null;
     pendingAnswer = null;
+    clear();
     return;
   }
   // 自分が出した提案は右上に出さない。答えるのは相手で、
   // こちらは返事が出そろってから「相手を選ぶ」画面で決める
-  if (t.proposer === mySeat) { pendingAnswer = null; return; }
+  if (t.proposer === mySeat) { pendingAnswer = null; clear(); return; }
 
   // ★ 順番待ちの間に押した答えを預かって、番が来たら送る。
   //   エンジンは 1 人ずつ聞く作りだが、**押す方は待たされたくない**。
@@ -3496,7 +3497,7 @@ function renderOffers() {
   if (pendingAnswer && pendingAnswer.seq !== seqNow) pendingAnswer = null;
   if (pendingAnswer) {
     const a2 = state.actions.find((x) => x.kind === pendingAnswer.kind);
-    if (a2) { const k = pendingAnswer; pendingAnswer = null; play(a2.i); return; }
+    if (a2) { pendingAnswer = null; clear(); play(a2.i); return; }
   }
 
   // 止めている相手の提案は、カードを出さずにそのまま断る
@@ -3507,16 +3508,17 @@ function renderOffers() {
       autoRejectSeq = seq;
       autoRejectAt = Date.now();
       toast(`${nameOf(t.proposer)} の提案を自動で断りました`);
+      clear();
       play(rej.i);
       return;
     }
     // もう断ってある。オンラインではサーバの返事が来るまで局面が動かないので、
     // その間カードを出すと「止めたはずの相手の提案が出た」ように見える。少し待つ
-    if (autoRejectSeq === seq && Date.now() - autoRejectAt < 4000) return;
+    if (autoRejectSeq === seq && Date.now() - autoRejectAt < 4000) { clear(); return; }
     // 4 秒経っても動かない＝何か詰まっている。**押せる物を出す**。
     // 空のまま返すと、答えを待っているのに押す物が無い盤面になる（実際に踏んだ）
   }
-  if (answerMode) return;   // 対案を組んでいる間は下のパネルに任せる
+  if (answerMode) { clear(); return; }   // 対案を組んでいる間は下のパネルに任せる
 
   const me0 = state.players.find((p) => p.id === mySeat) || state.players.find((p) => p.human);
   // 手札と同じカードの絵で出す
@@ -3543,6 +3545,22 @@ function renderOffers() {
     : mine && mine.state === "REJECTED" ? "REJECT_TRADE"
     : mine && mine.state === "COUNTER" ? "COUNTER_OFFER"
     : null;
+  // 🔴 **中身が変わっていないなら作り直さない**。
+  //    描き直しは局面が動くたびに走るので、出た直後に押すと
+  //    押している最中にボタンごと差し替わって、1 回目が捨てられる
+  //    （「すぐ押すと反応しない」の正体）。
+  const sig = JSON.stringify([
+    t.proposer, t.give, t.want, chosen,
+    (t.answers || []).map((a) => `${a.p}:${a.state}`),
+  ]);
+  // すでに送ってしまった答えは変えられない（エンジンに記録済み）。
+  // まだ預かっているだけなら押し直せる ── その違いを画面で分ける
+  const locked = !!mine;
+  const waiting = !!pendingAnswer && pendingAnswer.seq === seqNow;
+  if (box.dataset.sig === sig && box.firstElementChild) return;
+  box.dataset.sig = sig;
+  box.innerHTML = "";
+
   const card = document.createElement("div");
   card.className = "offercard" + (chosen ? " answered" : "");
   card.innerHTML = `
@@ -3554,11 +3572,15 @@ function renderOffers() {
     <div class="oc-row"><span class="oc-dir get">▼</span>${chips(t.give)}</div>
     <div class="oc-row"><span class="oc-dir put">▲</span>${chips(t.want)}
       <span class="oc-btns">
-        <button class="oc-b edit${chosen === "COUNTER_OFFER" ? " chosen" : ""}" title="この条件で対案を返す">✎</button>
-        <button class="oc-b no${chosen === "REJECT_TRADE" ? " chosen" : ""}" title="断る">✗</button>
-        <button class="oc-b yes${chosen === "ACCEPT_TRADE" ? " chosen" : ""}" title="受ける">✓</button>
+        <button class="oc-b edit${chosen === "COUNTER_OFFER" ? " chosen" : ""}"${locked ? " disabled" : ""}
+                title="この条件で対案を返す">✎</button>
+        <button class="oc-b no${chosen === "REJECT_TRADE" ? " chosen" : ""}"${locked ? " disabled" : ""}
+                title="断る">✗</button>
+        <button class="oc-b yes${chosen === "ACCEPT_TRADE" ? " chosen" : ""}"${locked ? " disabled" : ""}
+                title="受ける">✓</button>
       </span>
-    </div>`;
+    </div>
+    ${waiting ? `<div class="oc-note">みんなの返事を待っています（押し直せます）</div>` : ""}`;
   box.appendChild(card);
 
   // 押した物を**その場で光らせる**。順番待ちの時は「預かった」印にもなる
@@ -3581,6 +3603,7 @@ function renderOffers() {
     answerMode = true;
     render();
   });
+  if (locked) return;   // 送った後は変えられない
   card.querySelector(".no").addEventListener("click", (ev) => answer("REJECT_TRADE", ev.currentTarget));
   card.querySelector(".yes").addEventListener("click", (ev) => {
     // 払えない条件は受けられない。押せてしまうと「押したのに進まない」になる
