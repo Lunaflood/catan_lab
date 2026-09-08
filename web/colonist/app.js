@@ -856,7 +856,48 @@ function drawState() {
   if (monopolyTrip) wrap.style.display = "none";
 
   lastPieces = nowPieces;
-  if (isHumanTurn()) drawHints(gHints);
+  if (isHumanTurn()) { drawHints(gHints); drawBuildAsk(gHints); }
+}
+
+/**
+ * 選んだ場所の**真上**に ✗ ✓ を出す。
+ *
+ * 確認は挟みたいが、画面の隅に出すと押した所から指を運ばせることになる。
+ * 盤の SVG の中に描くので、拡大縮小も座標変換も勝手に付いてくる。
+ */
+function drawBuildAsk(gHints) {
+  if (!pendingBuild) return;
+  let x, y;
+  if (pendingBuild.node !== undefined && pendingBuild.node !== null) {
+    [x, y] = nodeXY(pendingBuild.node);
+  } else if (pendingBuild.edge !== undefined && pendingBuild.edge !== null) {
+    const e = board.edges[pendingBuild.edge];
+    x = (e.x1 + e.x2) / 2;
+    y = (e.y1 + e.y2) / 2;
+  } else return;
+
+  // 盤の上端に近い場所だと、真上に出すと切れて押せない。その時は下に回す
+  const vb = (document.getElementById("board").getAttribute("viewBox") || "0 0 0 0")
+    .split(/\s+/).map(Number);
+  const top = vb[1] || 0;
+  const above = y - 40 - 22 >= top;
+  const g = el("g", { class: "buildask", transform: `translate(${x},${above ? y - 40 : y + 44})` }, gHints);
+  el("rect", { x: -44, y: -20, width: 88, height: 40, rx: 20, class: "ba-bg" }, g);
+  const btn = (dx, cls, mark, tip, fn) => {
+    const b = el("g", { class: "ba-b " + cls, transform: `translate(${dx},0)` }, g);
+    el("circle", { cx: 0, cy: 0, r: 16, class: "ba-c" }, b);
+    const t = el("text", { x: 0, y: 6, "text-anchor": "middle", class: "ba-t" }, b);
+    t.textContent = mark;
+    b.appendChild(title(tip));
+    b.addEventListener("click", (ev) => { ev.stopPropagation(); fn(); });
+    return b;
+  };
+  btn(-21, "no", "✗", "選び直す", () => { pendingBuild = null; render(); });
+  btn(21, "yes", "✓", "ここに建てる", () => {
+    const i = pendingBuild.i;
+    pendingBuild = null;
+    play(i);
+  });
 }
 
 function drawHints(gHints) {
@@ -1955,6 +1996,7 @@ const BANK_STACK = 4;
  * 札の枚数なら、離れて見ても何枚残っているか数えられる。
  * 数字は出さない ── 正確な残数は本来伏せておく物で、
  * 「そろそろ尽きる」が分かれば足りる。
+ * 🔴 説明（title）にも枚数を書かないこと。合わせただけで正確な数が読めてしまう。
  */
 function bpCard(res, n, max, inner, tip) {
   // 1 枚でも残っていれば札は 1 枚出す（0 枚と「わずか」を見分けるため）
@@ -1963,7 +2005,7 @@ function bpCard(res, n, max, inner, tip) {
   const cards = Array.from({ length: Math.max(1, shown) }, (_, k) =>
     `<i class="bps ${res}" style="--k:${k}"></i>`).join("");
   return `<div class="bpstack${n === 0 ? " empty" : ""}" data-res="${res}"
-               title="${tip}　残り ${n}／${max}" style="--n:${shown}">
+               title="${tip}" style="--n:${shown}">
     ${cards}<div class="bpcard ${res}" data-res="${res}">${inner}</div>
   </div>`;
 }
@@ -3411,28 +3453,6 @@ function renderOffers() {
   card.querySelector(".yes").addEventListener("click", () => (acc ? play(acc.i) : toast("その条件は払えません")));
 }
 
-/** 選んだ場所を建てるかどうかの確認。盗賊と同じ形にそろえる */
-function renderBuildConfirm(box) {
-  const KIND_JA = {
-    BUILD_ROAD: "街道", SETUP_ROAD: "街道",
-    BUILD_SETTLEMENT: "開拓地", SETUP_SETTLEMENT: "開拓地",
-    BUILD_CITY: "都市", FREE_ROAD: "街道（無償）",
-  };
-  const what = KIND_JA[pendingBuild.kind] || "ここ";
-  box.innerHTML = `<div class="devconfirm">
-    <div class="dc-text"><b>${what}</b> をここに建てますか？</div>
-    <div class="dc-btns">
-      <button class="dc-no" title="選び直す">✗</button>
-      <button class="dc-yes" title="ここに建てる">✓</button>
-    </div></div>`;
-  box.querySelector(".dc-no").addEventListener("click", () => { pendingBuild = null; render(); });
-  box.querySelector(".dc-yes").addEventListener("click", () => {
-    const i = pendingBuild.i;
-    pendingBuild = null;
-    play(i);
-  });
-}
-
 function renderPanel(box) {
   box.innerHTML = "";
 
@@ -3444,10 +3464,9 @@ function renderPanel(box) {
     );
     if (!still || !isHumanTurn()) pendingBuild = null;
   }
-  if (pendingBuild) {
-    renderBuildConfirm(box);
-    return;
-  }
+  // 確認そのものは**盤の上**（`drawBuildAsk`）に出す。
+  // ここで下の帯にも出すと、同じ問いが 2 か所に並ぶ
+  if (pendingBuild) return;
 
   if (state.winner !== null) {
     box.innerHTML = `<div class="banner win">${escapeHtml(nameOf(state.winner))} の勝ち</div>`;

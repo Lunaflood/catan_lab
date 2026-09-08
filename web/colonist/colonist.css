@@ -582,6 +582,9 @@ header { display: none !important; }
 #app .SHEEP { background: linear-gradient(#9ecb5e, #69973a) !important; }
 #app .WHEAT { background: linear-gradient(#e6bc57, #bd8c22) !important; }
 #app .ORE   { background: linear-gradient(#8b919c, #575d67) !important; }
+/* 発展カードは盤に対応する地形が無いので、ここで色を決める。
+   🔴 これが無いと、重ねた札（.bps）の地色が付かず透けて見える */
+#app .DEV   { background: linear-gradient(#6a52b0, #35275f) !important; }
 
 /* 枚数のバッジは全部同じ形（左下だけ大きく丸い） */
 #app .ucard b, #app .lanecard .cnt, #app .traycard .cnt, #app #handbar .hcard .hn {
@@ -1106,3 +1109,24 @@ header { display: none !important; }
 #app #board .spot-edge.chosen {
   stroke: #ffd15e; stroke-width: 11; animation: none;
 }
+
+/* ---------------------------------------------------------------- 置く前の確認
+   選んだ場所の**真上**に ✗ ✓ を出す。画面の隅に出すと、押した所から
+   指を運ばせることになる。盤の SVG の中なので拡縮もそのまま効く。 */
+#app #board .buildask { cursor: pointer; }
+#app #board .buildask .ba-bg {
+  fill: rgba(12, 22, 32, .82);
+  stroke: rgba(255, 255, 255, .35); stroke-width: 1.5;
+}
+#app #board .buildask .ba-c {
+  stroke: #17313f; stroke-width: 2;
+  transition: filter var(--t-press);
+}
+#app #board .buildask .no  .ba-c { fill: #f0b6ad; }
+#app #board .buildask .yes .ba-c { fill: #9fe3b8; }
+#app #board .buildask .ba-t {
+  font-size: 19px; font-weight: 800; fill: #17313f;
+  pointer-events: none; user-select: none;
+}
+#app #board .buildask .ba-b:hover .ba-c { filter: brightness(1.12); }
+#app #board .buildask .ba-b:active .ba-c { filter: brightness(.92); }
