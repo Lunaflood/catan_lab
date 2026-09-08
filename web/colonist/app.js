@@ -2250,7 +2250,7 @@ function renderPlayers() {
           : seatLevel[p.id] != null ? `CPU・${LEVEL_NAMES[seatLevel[p.id]]}` : "CPU"}</div>
       </div>
       <div class="pinfo">
-        ${tags.length ? `<div class="ptags">${tags.join("")}</div>` : ""}
+        <div class="pmain">
         <div class="stats">
           <span class="${p.handSize > 7 ? "over" : ""}"
                 title="手札${p.handSize > 7 ? "（7 を超えているので 7 が出ると半分捨てる）" : ""}"
@@ -2265,7 +2265,11 @@ function renderPlayers() {
           ${left(p.settlementsLeft, "開拓地", "settle")}
           ${left(p.citiesLeft, "都市", "city")}
         </div>
-        ${p.human && devHeld() ? `<div class="mydev">${devHeld()}</div>` : ""}
+        </div>
+        <div class="pside">
+          ${tags.length ? `<div class="ptags">${tags.join("")}</div>` : ""}
+          ${p.human && devHeld() ? `<div class="mydev">${devHeld()}</div>` : ""}
+        </div>
       </div>`;
     if (blockedTraders.has(p.id)) d.classList.add("blocked");
     box.appendChild(d);
@@ -2332,6 +2336,8 @@ function renderHand() {
   html += `</div>`;
 
   // 発展カードも手札に並べる。**カードを押して使う**（ボタンからではない）
+  // 発展カードは**種類ごとにまとめて、右上に枚数**（資源の札と同じ読み方にする）。
+  // 1 枚 1 枚並べると、騎士を 3 枚持っただけで手札の帯が埋まる
   const devs = [];
   if (me.dev) {
     me.dev.forEach((v, i) => {
@@ -2339,11 +2345,20 @@ function renderHand() {
     });
   }
   if (devs.length) {
-    html += `<div class="hdevs">` + devs.map((i, k) =>
-      `<div class="hdev${i === 4 ? " vp" : ""}${devPick === k ? " on" : ""}" data-dev="${k}" data-kind="${i}"
-            title="${DEV_JA[i]}">
-         <span class="hglyph">${devGlyph(30)}</span>
-         <span class="hl">${DEV_JA[i]}</span></div>`).join("") + `</div>`;
+    // data-dev は「何枚目か」。同じ種類の先頭の 1 枚を指しておけば、押した時に使える
+    const first = new Map();
+    devs.forEach((kind, k) => { if (!first.has(kind)) first.set(kind, k); });
+    const counts = new Map();
+    devs.forEach((kind) => counts.set(kind, (counts.get(kind) || 0) + 1));
+    html += `<div class="hdevs">` +
+      [...first.keys()].map((kind) => {
+        const k = first.get(kind), n = counts.get(kind);
+        return `<div class="hdev${kind === 4 ? " vp" : ""}${devPick === k ? " on" : ""}"
+                     data-dev="${k}" data-kind="${kind}" title="${DEV_JA[kind]}　${n} 枚">
+          <span class="hglyph">${devGlyph(30)}</span>
+          <span class="hl">${DEV_JA[kind]}</span>
+          <span class="hn">${n}</span></div>`;
+      }).join("") + `</div>`;
   }
   box.innerHTML = html;
 
@@ -3538,7 +3553,12 @@ function renderOffers() {
   // 押した印は**再描画をまたいで残す**。
   // その場でクラスを足すだけでは次の描き直しで消え、「押せていない」ように見える。
   // 送る前は預かった答え、送った後はサーバが返した自分の返事を見る。
-  const mine = (t.answers || []).find((a) => a.p === mySeat);
+  // 🔴 「まだ答えていない（WAITING）」を**答えたと数えない**。
+  //    数えてしまうと、提案が届いた瞬間から全部のボタンが無効になり、
+  //    何も押せなくなる（実際にそうなった）。
+  const mine = (t.answers || []).find(
+    (a) => a.p === mySeat && a.state && a.state !== "WAITING"
+  );
   const chosen =
     pendingAnswer && pendingAnswer.seq === seqNow ? pendingAnswer.kind
     : mine && mine.state === "ACCEPTED" ? "ACCEPT_TRADE"
@@ -3858,10 +3878,23 @@ function renderActionBar(bar) {
     }));
   }
   // 6 個目は場面によって「振る」か「終える」。位置は動かさない
+  // 🔴 他の人の手番では押せないようにする。
+  //    自分の手が一覧に無い時に押せてしまうと、押しても何も起きない
   if (roll) {
-    bar.appendChild(abtn({ glyph: "⚅", title: "サイコロを振る", disabled: busy, onClick: () => play(roll.i) }));
+    bar.appendChild(abtn({
+      glyph: "⚅",
+      // 一覧は「いま手番の人」の手なので、自分の番でない時は相手の名前を出す
+      title: my ? "サイコロを振る" : `${nameOf(state.turnPlayer)} の手番です`,
+      disabled: !my || busy,
+      onClick: () => play(roll.i),
+    }));
   } else {
-    bar.appendChild(abtn({ glyph: "⏩", title: "手番を終える", disabled: !end || busy, onClick: () => end && play(end.i) }));
+    bar.appendChild(abtn({
+      glyph: "⏩",
+      title: my ? "手番を終える" : `${nameOf(state.turnPlayer)} の手番です`,
+      disabled: !my || !end || busy,
+      onClick: () => end && play(end.i),
+    }));
   }
 }
 

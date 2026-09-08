@@ -1341,3 +1341,44 @@ header { display: none !important; }
 #app #players-panel .pl.active { min-height: 90px !important; }
 /* 自分の欄は「あなた」の字と、名前の左の▶で分かるようにする */
 #app #players-panel .pl.self .pscore .me { font-weight: 800; color: #1b3d5c !important; }
+
+/* ---------------------------------------------------------------- プレイヤー欄の作り直し
+   称号と持っている発展カードを**右の空きスペース**に寄せる。
+   上下に積むと行が伸びて、詰めた行からはみ出していた。 */
+#app #players-panel .pl .pinfo { display: flex; align-items: center; gap: 10px; min-width: 0; }
+#app #players-panel .pl .pmain { flex: 1 1 auto; min-width: 0; }
+#app #players-panel .pl .pside {
+  flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px;
+  align-items: flex-end; justify-content: center; max-width: 46%;
+}
+/* 称号は 2 点動く。**一番目立つ札**にする（探すのではなく目に入る大きさ） */
+#app #players-panel .pl .ptags { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
+#app #players-panel .pl .ptags .tag {
+  font-size: 12px !important; font-weight: 800 !important; letter-spacing: .02em;
+  padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+  background: linear-gradient(#ffd964, #efa724) !important;
+  color: #3a2600 !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,.3), inset 0 0 0 1.5px rgba(255,255,255,.5);
+}
+/* 自分の持っている発展カードの内訳も右へ。小さくても字は読める大きさで */
+#app #players-panel .pl .mydev { display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-end; }
+#app #players-panel .pl .mydev .dv {
+  font-size: 11px !important; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+  background: rgba(90, 70, 160, .16); color: #2c2360 !important; white-space: nowrap;
+}
+
+/* 行の隙間は詰める。区切りは**線**で示す（空きで区切ると場所を食う） */
+#app #players-panel { gap: 2px !important; }
+#app #players-panel .pl + .pl { border-top: 2px solid rgba(20, 32, 44, .28); }
+
+/* ---------------------------------------------------------------- 手札の発展カード
+   資源の札と同じ読み方に揃える ── 種類ごとに 1 枚、右上に枚数。 */
+#app #handbar .hdevs { display: flex; gap: 6px; margin-left: 10px; }
+#app #handbar .hdev { position: relative; }
+#app #handbar .hdev .hn {
+  position: absolute; right: -3px; top: -3px;
+  min-width: 19px; height: 19px; padding: 0 4px;
+  background: var(--c-badge); color: #fff;
+  font-size: 12px; font-weight: 700; line-height: 19px; text-align: center;
+  border-radius: 2px 2px 2px 19px;
+}
