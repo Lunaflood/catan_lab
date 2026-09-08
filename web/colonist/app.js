@@ -1074,12 +1074,16 @@ function animSteal(L) {
   if (!hidden && (L.actor === mySeat || L.victim === mySeat)) {
     const hand = document.getElementById("handbar");
     const hc = document.querySelector(`#handbar .hcard.${L.stolen}`) || hand;
-    const face = `<div class="fcard ${L.stolen}">${glyphHtml(L.stolen, 30)}</div>`;
+    // 🔴 **奪われた札は、途中で止めて大きく見せる**。
+    //    収穫と同じ速さで通り過ぎると「何を取られたのか」が読めない
+    //    （これは自分の意思と関係なく手札が減る場面なので、一番知りたい）。
+    const face = `<div class="fcard ${L.stolen}">${glyphHtml(L.stolen, 44)}</div>`;
+    const slow = { hold: 950, lift: 1.5, travel: 620 };
     if (L.actor === mySeat) {
-      flyCard(svgRect(sx, sy - 12), hc, face, 120);
+      flyCard(svgRect(sx, sy - 12, 46, 62), hc, face, 140, slow);
     } else {
       const seat = document.querySelector(`#players-panel .pscore[data-pid="${L.actor}"]`);
-      flyCard(hc, seat || hand, face, 120);
+      flyCard(hc, seat || hand, face, 140, slow);
     }
     return;
   }
@@ -2072,7 +2076,15 @@ function svgRect(x, y, w = 34, h = 46) {
  * 盤の SVG ではなく **画面の座標** で動かす。両端（銀行の欄・手札の欄）は
  * 別々の要素で、共通の座標系を持たないため。
  */
-function flyCard(from, to, inner, delay = 0) {
+/**
+ * 端から端へ札を 1 枚飛ばす。
+ *
+ * `opts.hold` を渡すと、**持ち上げたところで一度止まる**。
+ * 盗まれた札のように「何が動いたか」を読ませたい時に使う
+ * （通り過ぎるだけでは、絵を見る間が無い）。
+ * `opts.lift` は止まっている間の大きさ。
+ */
+function flyCard(from, to, inner, delay = 0, opts = {}) {
   const a = fxRect(from);
   const b = fxRect(to);
   if (!a || !b || !a.width || !b.width) return;
@@ -2085,17 +2097,23 @@ function flyCard(from, to, inner, delay = 0) {
   const dx = b.left + b.width / 2 - (a.left + a.width / 2);
   const dy = b.top + b.height / 2 - (a.top + a.height / 2);
   const sc = b.width / a.width;
+  const hold = Math.max(0, opts.hold || 0);
+  const lift = opts.lift || 1;
+  // 持ち上げ・止まり・移動・着地。合計が動きの長さになる
+  const rise = 180, travel = opts.travel || 380, land = 80;
+  const total = rise + hold + travel + land;
+  const up = `translate(${(dx * 0.22).toFixed(1)}px, ${(dy * 0.22 - 28).toFixed(1)}px) scale(${lift}) rotate(-7deg)`;
   const anim = el.animate(
     [
-      { transform: "translate(0,0) scale(.7) rotate(0deg)", opacity: 0 },
-      { transform: `translate(${(dx * 0.22).toFixed(1)}px, ${(dy * 0.22 - 28).toFixed(1)}px) scale(1) rotate(-7deg)`,
-        opacity: 1, offset: 0.28 },
+      { transform: "translate(0,0) scale(.7) rotate(0deg)", opacity: 0, offset: 0 },
+      { transform: up, opacity: 1, offset: rise / total },
+      { transform: up, opacity: 1, offset: (rise + hold) / total },
       { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${sc.toFixed(2)}) rotate(3deg)`,
-        opacity: 1, offset: 0.86 },
+        opacity: 1, offset: (rise + hold + travel) / total },
       { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${(sc * 1.08).toFixed(2)}) rotate(0deg)`,
-        opacity: 0 },
+        opacity: 0, offset: 1 },
     ],
-    { duration: 640, delay, easing: "cubic-bezier(.3,.75,.35,1)", fill: "both" }
+    { duration: total, delay, easing: "cubic-bezier(.3,.75,.35,1)", fill: "both" }
   );
   const drop = () => el.remove();
   anim.finished.then(drop, drop);
