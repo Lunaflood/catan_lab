@@ -45,6 +45,9 @@ let watching = false;
 let botTimer = null;
 let lastPieces = new Set();
 let lastDiceKey = "";
+/** 直近にサイコロが振られた時刻。連打よけに使う */
+let rolledAt = -1e9;
+let rolledSeq = -1;
 let lastSeq = 0;
 /** 盗賊が一度でも動かされたか。最初の砂漠に居るうちは動きを付けない */
 let robberEverMoved = false;
@@ -3057,7 +3060,19 @@ function renderActions() {
   }
   const end = state.actions.find((a) => a.kind === "END_TURN");
   if (end) {
-    box.appendChild(tile({ cls: "end mid", name: "手番を終える", sub: "", onClick: () => play(end.i) }));
+    // 🔴 サイコロを振った直後は押せなくする。
+    //    振ると同時にこの欄が組み直されるので、連打の 2 発目が
+    //    ここに当たって手番が飛ぶ（本命の見た目でも同じ事故が起きた）。
+    //    待つ長さはサイコロの演出（scheduleBot の 1020ms）と揃える。
+    const cooling = performance.now() - rolledAt < 1020;
+    if (cooling) setTimeout(() => { if (state) render(); }, 1080 - (performance.now() - rolledAt));
+    box.appendChild(tile({
+      cls: "end mid",
+      name: "手番を終える",
+      sub: cooling ? "サイコロの結果を見てから" : "",
+      disabled: cooling,
+      onClick: () => play(end.i),
+    }));
   }
 }
 
@@ -3306,6 +3321,13 @@ function sfxWatch() {
 }
 
 function render() {
+  // 🔴 **一番先に**サイコロを振った時刻を控える。
+  //    操作の欄はこれより先に組み立てられるので、後で控えると
+  //    振った直後の 1 回だけ「手番を終える」が押せてしまう
+  if (state && state.last && state.last.kind === "ROLL" && state.last.seq !== rolledSeq) {
+    rolledSeq = state.last.seq;
+    rolledAt = performance.now();
+  }
   drawState();
   runAnimations();
   renderPlayers();

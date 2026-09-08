@@ -380,8 +380,7 @@ header { display: none !important; }
 #app #handbar *:not([style*="color"]) { color: #17242e !important; }
 #app #bankpanel *:not([style*="color"]) { color: #17242e !important; }
 
-/* 持ち時間の仕組みがまだ無いので、時間バーは出さない（枠だけ残す） */
-#timerbar { display: none; }
+/* 時間バーは JS が駆動する（renderClock）。測っていない間は hidden で消える */
 
 /* ---------------------------------------------------------------- 左下パネルの中身
    中で使い回している既存の部品（tile / chip / resCard）は暗い地の前提なので、
@@ -1411,3 +1410,79 @@ header { display: none !important; }
 
 /* 空いた分はログへ */
 #app #log { max-height: none !important; flex: 1 1 auto !important; min-height: 120px !important; }
+
+/* ---------------------------------------------------------------- 盤を動かす
+   掴んで動かせることが分かるように手の形を出す。
+   ⚠ touch-action を none にしないと、指で動かした時に画面ごとスクロールする。 */
+#board { cursor: grab; touch-action: none; }
+#board.grabbing { cursor: grabbing; }
+/* 頂点や辺の丸の上では「置ける」ことを優先して見せる */
+#board .spot, #board .spot-edge, #board .spot-tile { cursor: pointer; }
+
+/* ---------------------------------------------------------------- ひとこと
+   できごとの欄と場所を分け合う。縦の場所は増やさない（ログを削らないため）。 */
+#logtabs { display: flex; gap: 4px; margin: -2px 0 5px; flex: 0 0 auto; }
+#logtabs[hidden] { display: none; }
+#logtabs .lt {
+  position: relative; flex: 1 1 0; padding: 3px 0 4px;
+  background: rgba(0,0,0,.06); border: 0; border-radius: 5px;
+  color: var(--c-ink-dark); font: inherit; font-size: 13px; font-weight: 600;
+  opacity: .55; cursor: pointer;
+}
+#logtabs .lt.on { background: rgba(0,0,0,.14); opacity: 1; }
+#logtabs .lt .ltbadge {
+  display: inline-block; margin-left: 5px; min-width: 17px; height: 17px;
+  padding: 0 4px; background: #d0453f; color: #fff;
+  font-size: 11px; line-height: 17px; border-radius: 9px;
+}
+#chatpane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#chatpane[hidden] { display: none; }
+#chatlines {
+  flex: 1; overflow-y: auto; min-height: 0;
+  font-size: 15px; color: var(--c-ink-dark); line-height: 1.45;
+}
+#chatlines .cline { margin: 0 0 2px; word-break: break-word; }
+#chatlines .cwho { font-weight: 700; margin-right: 6px; }
+#chatlines .ctxt { font-weight: 400; }
+#chatbar { flex: 0 0 auto; display: flex; gap: 5px; padding-top: 5px; }
+#chatbar #chattext {
+  flex: 1 1 auto; min-width: 0; height: 30px; padding: 0 8px;
+  border: 1px solid rgba(0,0,0,.2); border-radius: 5px;
+  background: rgba(255,255,255,.75); color: var(--c-ink-dark);
+  font: inherit; font-size: 14px;
+}
+#chatbar #chatsend {
+  flex: 0 0 auto; height: 30px; padding: 0 12px;
+  background: linear-gradient(#cfe4f2, #a9c9e0);
+  border: 1px solid #7fa8c6; border-radius: 5px;
+  color: #17313f; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+#chatbar #chatsend:hover { filter: brightness(1.06); }
+
+/* ---------------------------------------------------------------- 持ち時間 */
+#prompttimer.warn { background: linear-gradient(#e0645c, #c33f38); color: #fff; font-weight: 700; }
+#timerbar[hidden] { display: none; }
+#timerbar i.warn { background: #e0554c; }
+
+/* 待機所の持ち時間の欄 */
+#hlimits { margin: 6px 0 10px; }
+#hlimits[hidden] { display: none; }
+#hlimits .hltoggle {
+  width: 100%; padding: 7px 10px; text-align: left;
+  background: rgba(0,0,0,.05); border: 0; border-radius: 8px;
+  font: inherit; font-size: 14px; font-weight: 600; color: inherit; cursor: pointer;
+}
+#hlimits .hltoggle i { float: right; font-style: normal; opacity: .6; }
+#hlimits .hlbody { padding: 6px 2px 0; }
+#hlimits .hlbody[hidden] { display: none; }
+#hlimits .hlrow {
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 0; font-size: 14px;
+}
+#hlimits .hlname { flex: 1 1 auto; opacity: .85; }
+#hlimits .hlrow select {
+  flex: 0 0 auto; min-width: 96px; padding: 3px 6px;
+  border: 1px solid rgba(0,0,0,.2); border-radius: 6px;
+  background: #fff; font: inherit; font-size: 13px;
+}
+#hlimits .hlnote { padding: 5px 0 0; font-size: 12px; opacity: .6; line-height: 1.5; }

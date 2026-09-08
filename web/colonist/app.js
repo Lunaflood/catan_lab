@@ -777,11 +777,141 @@ function defs(svg) {
     </defs>`);
 }
 
+/* ---------------------------------------------------------------- 盤を動かす
+
+   掴んで動かす／ホイールで拡げる。**viewBox を書き換えるだけ**で済ませる。
+
+   ★ こうすると当たり判定が自動で正しくなる。頂点や辺の丸は SVG の要素で、
+     クリックは要素自身が受け取る。札を飛ばす時の座標も getScreenCTM 経由
+     （svgRect）なので、viewBox を変えれば変換行列がそのまま追従する。
+     CSS の transform で拡げると、この 2 つを自分で補正する羽目になる。
+
+   ⚠ #app には CSS の zoom が掛かっている（fitUi）。zoom は場所の計算にも効くので
+     getBoundingClientRect も getScreenCTM も zoom 込みの値を返す。
+     だからここでは zoom を一切気にしなくてよい。                              */
+
+/** 基準（board.viewBox）からのずらし量と倍率 */
+let boardView = { dx: 0, dy: 0, scale: 1 };
+const BOARD_ZOOM_MIN = 0.7;
+const BOARD_ZOOM_MAX = 3.2;
+
+/** いまの見え方を viewBox に反映する */
+function applyBoardView() {
+  const svg = document.getElementById("board");
+  if (!svg || !board || !board.viewBox) return;
+  const [vx, vy, vw, vh] = board.viewBox;
+  const w = vw / boardView.scale;
+  const h = vh / boardView.scale;
+  // 盤を画面の外へ完全に追い出せないように、ずらし量を基準の半分までに抑える
+  const lim = (full, cur) => Math.max(full, cur) * 0.5;
+  boardView.dx = clamp(boardView.dx, -lim(vw, w), lim(vw, w));
+  boardView.dy = clamp(boardView.dy, -lim(vh, h), lim(vh, h));
+  const cx = vx + vw / 2 + boardView.dx;
+  const cy = vy + vh / 2 + boardView.dy;
+  svg.setAttribute("viewBox", `${cx - w / 2} ${cy - h / 2} ${w} ${h}`);
+}
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+/** 元の位置と大きさに戻す */
+function resetBoardView() {
+  boardView = { dx: 0, dy: 0, scale: 1 };
+  applyBoardView();
+}
+
+/**
+ * 掴んで動かす・ホイールで拡げるを盤に付ける。**一度だけ**呼ぶ。
+ *
+ * 🔴 動かした直後のクリックを飲み込むのが肝。頂点や辺の丸は自分で click を
+ *    受け取るので、掴んで動かしただけのつもりが「そこに置く」になってしまう。
+ *    捕捉段階（capture）で止めれば、要素まで届く前に消せる。
+ */
+let boardCtlBound = false;
+function bindBoardControls() {
+  if (boardCtlBound) return;
+  const svg = document.getElementById("board");
+  if (!svg) return;
+  boardCtlBound = true;
+
+  let drag = null;      // 掴んでいる間の状態
+  let moved = false;    // 一定より動いたか（＝置く操作ではない）
+  const SLOP = 5;       // これ以下は手ぶれとして「押した」扱いにする
+
+  /** 画面の距離を盤の座標の距離に直す */
+  const perPx = () => {
+    const vb = (svg.getAttribute("viewBox") || "").split(/\s+/).map(Number);
+    const r = svg.getBoundingClientRect();
+    if (!r.width || !vb[2]) return 1;
+    // preserveAspectRatio="xMidYMid meet" なので、実際の縮尺は縦横の小さい方
+    return Math.max(vb[2] / r.width, vb[3] / r.height);
+  };
+
+  svg.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0 && ev.pointerType === "mouse") return;
+    drag = { x: ev.clientX, y: ev.clientY, dx: boardView.dx, dy: boardView.dy };
+    moved = false;
+  });
+
+  addEventListener("pointermove", (ev) => {
+    if (!drag) return;
+    const ddx = ev.clientX - drag.x;
+    const ddy = ev.clientY - drag.y;
+    if (!moved && Math.hypot(ddx, ddy) < SLOP) return;
+    if (!moved) { moved = true; svg.classList.add("grabbing"); }
+    const k = perPx();
+    boardView.dx = drag.dx - ddx * k;
+    boardView.dy = drag.dy - ddy * k;
+    applyBoardView();
+  }, { passive: true });
+
+  addEventListener("pointerup", () => {
+    if (!drag) return;
+    drag = null;
+    svg.classList.remove("grabbing");
+    // 動かした後の click を 1 回だけ飲む
+    if (moved) {
+      const eat = (e) => { e.stopPropagation(); e.preventDefault(); };
+      svg.addEventListener("click", eat, { capture: true, once: true });
+      // クリックが来ないまま終わることもあるので、少し経ったら外す
+      setTimeout(() => svg.removeEventListener("click", eat, { capture: true }), 350);
+    }
+    moved = false;
+  });
+
+  // ホイールで拡げる。**指した点を動かさない**ように寄せる
+  svg.addEventListener("wheel", (ev) => {
+    ev.preventDefault();
+    const before = svgPointOf(ev.clientX, ev.clientY);
+    const step = ev.deltaY < 0 ? 1.12 : 1 / 1.12;
+    boardView.scale = clamp(boardView.scale * step, BOARD_ZOOM_MIN, BOARD_ZOOM_MAX);
+    applyBoardView();
+    const after = svgPointOf(ev.clientX, ev.clientY);
+    if (before && after) {
+      boardView.dx += before.x - after.x;
+      boardView.dy += before.y - after.y;
+      applyBoardView();
+    }
+  }, { passive: false });
+
+  // 二度押しで元に戻す（迷子になった時の逃げ道）
+  svg.addEventListener("dblclick", () => resetBoardView());
+}
+
+/** 画面の座標を盤の座標へ（getScreenCTM の逆） */
+function svgPointOf(clientX, clientY) {
+  const svg = document.getElementById("board");
+  const m = svg && svg.getScreenCTM();
+  if (!m) return null;
+  return new DOMPoint(clientX, clientY).matrixTransform(m.inverse());
+}
 function drawBoard() {
   const svg = document.getElementById("board");
   svg.innerHTML = "";
+  // 掴んで動かす・ホイールで拡げるを付ける（中で一度きりにしている）
+  bindBoardControls();
+  // 見ている位置と倍率は描き直しても保つ（駒を置くたびに戻ると使い物にならない）
+  applyBoardView();
   const [vx, vy, vw, vh] = board.viewBox;
-  svg.setAttribute("viewBox", `${vx} ${vy} ${vw} ${vh}`);
   // 盤の大きさは縦で決まるので横に余白が出る。
   // その余白を CSS の右パディングで右側に寄せ、盤はその中で中央に置く。
   // ⚠ 操作の欄（右下）とは重なる。盤 922px + 欄 404px = 1326px に対して
@@ -3944,6 +4074,17 @@ function renderActionBar(bar) {
   // 6 個目は場面によって「振る」か「終える」。位置は動かさない
   // 🔴 他の人の手番では押せないようにする。
   //    自分の手が一覧に無い時に押せてしまうと、押しても何も起きない
+  //
+  // 🔴 **役目が入れ替わった直後は押せなくする**。
+  //    ここは同じ場所のまま「振る(⚅)」→「終える(⏩)」に中身だけ差し替わる。
+  //    play() は同期で render() を呼ぶので、サイコロを連打すると
+  //    2 発目が差し替わった「終える」に当たり、振った瞬間に手番が飛んでいた。
+  //    待つ長さはサイコロの演出（scheduleBot の 1020ms）と揃える。
+  const kind6 = roll ? "ROLL" : "END_TURN";
+  if (kind6 !== slot6Kind) {
+    slot6Kind = kind6;
+    slot6ChangedAt = performance.now();
+  }
   if (roll) {
     bar.appendChild(abtn({
       glyph: "⚅",
@@ -3953,13 +4094,38 @@ function renderActionBar(bar) {
       onClick: () => play(roll.i),
     }));
   } else {
+    // 「振る」から入れ替わった直後だけ待たせる。
+    // 手番の途中（建設のあとなど）で押せなくなっては困るので、
+    // 直前が ROLL だった時に限る
+    const cooling = performance.now() - slot6ChangedAt < SLOT6_COOL_MS;
+    if (cooling) scheduleSlot6Wake();
     bar.appendChild(abtn({
       glyph: "⏩",
-      title: my ? "手番を終える" : `${nameOf(state.turnPlayer)} の手番です`,
-      disabled: !my || !end || busy,
+      title: my
+        ? (cooling ? "手番を終える（サイコロの結果を見てから）" : "手番を終える")
+        : `${nameOf(state.turnPlayer)} の手番です`,
+      disabled: !my || !end || busy || cooling,
       onClick: () => end && play(end.i),
     }));
   }
+}
+
+/**
+ * 操作欄 6 個目の「連打よけ」。
+ *
+ * 直前に描いた役目と、入れ替わった時刻を覚えておく。
+ * 入れ替わりを見つけたら、待ち時間が明けた頃に一度だけ描き直して
+ * ボタンを生き返らせる（描き直しが来ないと押せないままになる）。
+ */
+let slot6Kind = null;
+let slot6ChangedAt = 0;
+let slot6Timer = null;
+const SLOT6_COOL_MS = 1020;   // サイコロの演出と同じ長さ
+
+function scheduleSlot6Wake() {
+  clearTimeout(slot6Timer);
+  const left = SLOT6_COOL_MS - (performance.now() - slot6ChangedAt);
+  slot6Timer = setTimeout(() => { if (state) render(); }, Math.max(30, left + 20));
 }
 
 /**
@@ -4048,6 +4214,323 @@ function logLine(e) {
     <span class="txt"><b style="color:${PLAYER_INK[e.actor]}">${escapeHtml(who)}</b> ${withNames(e.text)}${flowHtml(e)}</span></div>`;
 }
 
+/* ---------------------------------------------------------------- 持ち時間
+
+   🔴🔴🔴 **時計はエンジンの外にしか置かない**。
+
+   エンジンの `turn_time_limit_ms` は `negotiation_open()` を通じて
+   合法手の一覧そのものを変える。オンラインは「合法手の何番目か」だけを
+   配る方式なので、サーバと端末で時計の進み方が違うと盤が食い違う。
+   だからここで測るのは**表示と、1 人で遊ぶ時の自動着手だけ**。
+
+   オンラインでは残り時間をサーバが持ち、取りに行った応答の封筒
+   （`{seq, msgs, clock}`）で受け取る。手の電文には混ぜない。
+
+   場面の鍵はサーバ（rooms.rs の SceneKey）と**同じ材料**で作る。       */
+
+/** 待機所で決める持ち時間（秒）。並びは LIMIT_KEYS と揃える */
+const LIMIT_KEYS = ["tSetupS", "tSetupR", "tRobber", "tRoll", "tTurn", "tAnswer"];
+const LIMIT_LABELS = [
+  "初期配置の開拓地", "初期配置の道", "盗賊を置く",
+  "サイコロを振る前", "手番", "提案への返事",
+];
+const LIMIT_DEFAULT = [300, 60, 60, 30, 240, 15];
+/** 選べる長さ（秒）。0 は無制限 */
+const LIMIT_CHOICES = [0, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 420, 600];
+
+/** いまの持ち時間（ミリ秒）。オンラインではサーバから来た値で上書きされる */
+let limitsMs = LIMIT_DEFAULT.map((v) => v * 1000);
+
+/**
+ * 自前の締切。**表示はいつもこれを見る**。
+ *
+ * 🔴 オンラインでも端末が自分で数える。サーバの残り時間は取りに行った
+ * 応答の封筒で届くが、待ち受けは最大 25 秒その場で持つので、
+ * 封筒だけに頼ると**最大 25 秒のあいだ残り時間が出ない**（実際に出なかった）。
+ * 場面ごとの長さは全員が同じ値を持っているので、端末でも同じ規則で数えられる。
+ * サーバの値が届いたらそちらに合わせる（離席で詰められた分もこれで乗る）。
+ *
+ * ⚠ **数えるのは表示のためだけ**。オンラインで時間切れの手を指すのは
+ *   サーバだけ（各端末が勝手に指すと手順が分岐して盤が食い違う）。
+ */
+let localDeadline = null;   // {key, at, limit}
+
+/** サーバから来た残り時間に合わせる */
+function setClock(c) {
+  if (!c || !c.limitMs) return;
+  const key = sceneKey();
+  if (!key) return;
+  // 場面が同じなら、サーバの言う残りに合わせ直す
+  localDeadline = { key, at: performance.now() + c.leftMs, limit: c.limitMs };
+}
+
+/** いまの場面の鍵。サーバの SceneKey と同じ材料で作る */
+function sceneKey() {
+  if (!state || state.winner !== null) return null;
+  if (state.prompt === "GAME_OVER") return null;
+  return [
+    state.turn, state.turnPlayer, state.toAct, state.prompt,
+    state.rolled ? 1 : 0, state.setupIndex,
+    state.devPlayed ? 1 : 0, state.freeRoads,
+  ].join("/");
+}
+
+/** その場面の持ち時間（ミリ秒）。0 は無制限 */
+function limitOfScene() {
+  if (!state) return 0;
+  const [S, R, ROB, ROLL, TURN, ANS] = limitsMs;
+  switch (state.prompt) {
+    case "SETUP_SETTLEMENT": return S;
+    case "SETUP_ROAD":       return R;
+    case "FREE_ROAD":        return R;   // 道を置く動作なので同じ長さ
+    case "MOVE_ROBBER":      return ROB;
+    case "DISCARD":          return ROB; // 7 が出た同じ場面なので合わせる
+    case "DECIDE_TRADE":     return ANS;
+    case "DECIDE_ACCEPTEES": return ANS * 3;
+    case "PLAY_TURN":        return state.rolled ? TURN : ROLL;
+    default: return 0;
+  }
+}
+
+/** 残り時間（ミリ秒）。測っていなければ null */
+function timeLeftMs() {
+  if (!localDeadline) return null;
+  return Math.max(0, localDeadline.at - performance.now());
+}
+
+function timeLimitMs() {
+  return localDeadline ? localDeadline.limit : 0;
+}
+
+/**
+ * 場面が変わったら締切を引き直す。1 人で遊んでいる時だけ、尽きたら自分で指す。
+ *
+ * 🔴 オンラインでは**絶対にここから指さない**。各端末が勝手に指すと
+ *    手順が分岐して盤が食い違う（＝番号の意味がズレる）。指すのはサーバだけ。
+ */
+function stepLocalClock() {
+  if (!state || watching || state.winner !== null) { localDeadline = null; return; }
+  const mine = net.on ? state.toAct === mySeat : isHumanTurn();
+  if (!mine) {
+    // 相手の番。**残りはサーバが知らせてくる**ので自分では数え直さない。
+    // ただし場面が変わったのに新しい値がまだ来ていない間は、
+    // 古い残りを出し続けないように消す
+    if (net.on) {
+      if (localDeadline && localDeadline.key !== sceneKey()) localDeadline = null;
+    } else {
+      localDeadline = null;
+    }
+    return;
+  }
+  const key = sceneKey();
+  const limit = limitOfScene();
+  if (!key || !limit) { localDeadline = null; return; }
+  if (!localDeadline || localDeadline.key !== key) {
+    localDeadline = { key, at: performance.now() + limit, limit };
+    return;
+  }
+  if (performance.now() < localDeadline.at) return;
+  // オンラインはここで指さない。サーバが指した手が届くのを待つ
+  if (net.on) return;
+  const a = defaultAction();
+  localDeadline = null;
+  if (a) { toast("時間切れ"); play(a.i); }
+}
+
+/**
+ * 時間切れで指す手。**必ず合法手の一覧から選ぶ**。
+ * 選び方はサーバ（rooms.rs の default_action）と揃えてある。
+ */
+function defaultAction() {
+  if (!state || !state.actions || !state.actions.length) return null;
+  const of = (k) => state.actions.find((a) => a.kind === k);
+  switch (state.prompt) {
+    case "SETUP_SETTLEMENT": {
+      // 一番よく採れる場所へ。賢くしすぎると席を立つ方が得になる
+      let best = null, bestP = -1;
+      for (const a of state.actions) {
+        if (a.kind !== "SETUP_SETTLEMENT" || a.node == null) continue;
+        const p = nodePipSum(a.node);
+        if (p > bestP || (p === bestP && best && a.node < best.node)) { best = a; bestP = p; }
+      }
+      return best;
+    }
+    case "SETUP_ROAD":
+    case "FREE_ROAD":
+    case "MOVE_ROBBER":
+      return state.actions[0];
+    case "DISCARD": {
+      // 捨てた後の手札が一番平らになる組み合わせ
+      const me = state.players.find((p) => p.id === state.toAct);
+      const hand = (me && me.hand) || [0, 0, 0, 0, 0];
+      let best = null, bestV = Infinity;
+      for (const a of state.actions) {
+        if (a.kind !== "DISCARD" || !a.give) continue;
+        let v = 0;
+        for (let r = 0; r < 5; r++) {
+          const left = Math.max(0, hand[r] - a.give[r]);
+          v += left * left;
+        }
+        if (v < bestV) { best = a; bestV = v; }
+      }
+      return best;
+    }
+    case "DECIDE_TRADE":     return of("REJECT_TRADE") || state.actions[0];
+    case "DECIDE_ACCEPTEES": return of("CANCEL_TRADE") || state.actions[0];
+    case "PLAY_TURN":        return state.rolled ? of("END_TURN") : of("ROLL");
+    default: return null;
+  }
+}
+
+/** その頂点に面した陸ヘクスの pip の合計 */
+function nodePipSum(node) {
+  let sum = 0;
+  for (const t of board.tiles) {
+    if (!t.resource) continue;
+    if (t.nodes && t.nodes.includes(node)) sum += t.pips || 0;
+  }
+  return sum;
+}
+
+/** 残り時間を画面に出す。0.2 秒ごとに呼ばれる */
+function renderClock() {
+  const tag = document.getElementById("prompttimer");
+  const bar = document.getElementById("timerbar");
+  const fill = bar && bar.querySelector("i");
+  if (!tag) return;
+  const left = timeLeftMs();
+  const limit = timeLimitMs();
+  if (left == null || !limit || !state || state.winner !== null) {
+    tag.textContent = "";
+    tag.classList.remove("warn");
+    if (bar) bar.hidden = true;
+    return;
+  }
+  const sec = Math.ceil(left / 1000);
+  const m = Math.floor(sec / 60);
+  tag.textContent = m > 0 ? `${m}:${String(sec % 60).padStart(2, "0")}` : `${sec} 秒`;
+  // 残り 1/4 か 10 秒を切ったら赤くする
+  const near = left <= Math.min(10_000, limit / 4);
+  tag.classList.toggle("warn", near);
+  if (bar && fill) {
+    bar.hidden = false;
+    fill.style.width = `${Math.max(0, Math.min(100, (left / limit) * 100))}%`;
+    fill.classList.toggle("warn", near);
+  }
+}
+/* ---------------------------------------------------------------- ひとこと
+
+   できごとの欄と場所を分け合う。**縦の場所を奪わない**ように札で切り替える
+   （ログを大きくしたばかりなので、そこを削らない）。
+
+   🔴 発言はサーバの `history`（手の並び）には積まれない。
+     手として再生される並びに手でない物を混ぜると盤が壊れるため。
+   🔴 文字は必ず escapeHtml を通す。サーバの esc は JSON の記号しか潰さない。 */
+
+let chatLog = [];        // {who, seat, name, text}
+let chatUnread = 0;
+let logView = "log";     // "log" か "chat"
+let chatBuilt = false;
+
+function chatAvailable() { return !!net.on; }
+
+function ensureChatUi() {
+  const log = document.getElementById("log");
+  if (!log) return;
+  if (!chatBuilt) {
+    chatBuilt = true;
+    const tabs = document.createElement("div");
+    tabs.id = "logtabs";
+    tabs.innerHTML =
+      `<button class="lt on" data-v="log">できごと</button>` +
+      `<button class="lt" data-v="chat">ひとこと<span class="ltbadge" hidden>0</span></button>`;
+    log.insertBefore(tabs, log.firstChild);
+
+    const pane = document.createElement("div");
+    pane.id = "chatpane";
+    pane.hidden = true;
+    pane.innerHTML =
+      `<div id="chatlines"></div>` +
+      `<div id="chatbar">` +
+      `<input id="chattext" type="text" maxlength="120" placeholder="ひとこと…" autocomplete="off">` +
+      `<button id="chatsend" title="送る">送る</button></div>`;
+    log.appendChild(pane);
+
+    tabs.querySelectorAll(".lt").forEach((b) => {
+      b.addEventListener("click", () => setLogView(b.dataset.v));
+    });
+    const send = () => {
+      const el = document.getElementById("chattext");
+      const t = el.value.trim();
+      el.value = "";
+      if (!t || !net.on) return;
+      api("chat", { room: net.room, token: net.token, text: t }).catch(() => {});
+    };
+    pane.querySelector("#chatsend").addEventListener("click", send);
+    pane.querySelector("#chattext").addEventListener("keydown", (ev) => {
+      // ⚠ 他の処理へ伝えない。文字を打っている間は盤の操作をさせない
+      ev.stopPropagation();
+      if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send(); }
+    });
+  }
+  // ひとりで遊んでいる時は出さない（CPU は喋らない）
+  const tabs = document.getElementById("logtabs");
+  tabs.hidden = !chatAvailable();
+  if (!chatAvailable() && logView === "chat") setLogView("log");
+}
+
+function setLogView(v) {
+  logView = v;
+  if (v === "chat") chatUnread = 0;
+  const tabs = document.getElementById("logtabs");
+  if (tabs) tabs.querySelectorAll(".lt").forEach((b) => b.classList.toggle("on", b.dataset.v === v));
+  const lines = document.getElementById("loglines");
+  const pane = document.getElementById("chatpane");
+  if (lines) lines.hidden = v !== "log";
+  if (pane) pane.hidden = v !== "chat";
+  paintChatBadge();
+  if (v === "chat") {
+    renderChat();
+    const el = document.getElementById("chattext");
+    if (el) el.focus();
+  }
+}
+
+function paintChatBadge() {
+  const b = document.querySelector("#logtabs .lt[data-v='chat'] .ltbadge");
+  if (!b) return;
+  b.textContent = String(chatUnread);
+  b.hidden = chatUnread === 0;
+}
+
+function renderChat() {
+  const box = document.getElementById("chatlines");
+  if (!box) return;
+  const near = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  box.innerHTML = chatLog
+    .map((c) => {
+      const ink = c.seat != null && PLAYER_INK[c.seat] ? PLAYER_INK[c.seat] : "#5b6b78";
+      return `<div class="cline"><span class="cwho" style="color:${ink}">` +
+        `${escapeHtml(c.name)}</span><span class="ctxt">${escapeHtml(c.text)}</span></div>`;
+    })
+    .join("");
+  if (near) box.scrollTop = box.scrollHeight;
+}
+
+/** サーバから届いたひとこと */
+function onChat(m) {
+  chatLog.push({ who: m.who, seat: m.seat, name: m.name || "", text: m.text || "" });
+  if (chatLog.length > 200) chatLog.splice(0, chatLog.length - 200);
+  ensureChatUi();
+  if (logView === "chat") {
+    renderChat();
+  } else {
+    chatUnread++;
+    paintChatBadge();
+    // 見ていない札に来たことが分かるように、一瞬だけ出す
+    toast(`${m.name}: ${m.text}`);
+  }
+}
 function renderLog() {
   const box = document.getElementById("loglines");
   // 直近 5 巡ぶんを残してスクロールで遡れるようにする。
@@ -4402,6 +4885,7 @@ function render() {
   renderHand();
   renderActions();
   renderLog();
+  ensureChatUi();
   renderPrompt();
   // 下の帯は**常に出したまま**。押せない物は灰色で残す（位置を覚えさせる）
   document.getElementById("turnbox").hidden = false;
@@ -4521,6 +5005,8 @@ function netSend(payload) {
 let netBulk = false;
 
 function netApply(m) {
+  // 指す前の「指す番の席」を控える。時間切れの知らせに使う
+  const autoActor = m.auto && state ? state.toAct : null;
   const g = m.g || [0, 0, 0, 0, 0];
   const w = m.w || [0, 0, 0, 0, 0];
   let ok = 0;
@@ -4557,6 +5043,8 @@ function netApply(m) {
 
   if (netBulk) return;   // まとめてなぞっている間は、最後に一度だけ描く
   refreshState();
+  // 時間切れでサーバが代わりに指した手は、そうと分かるように知らせる
+  if (m.auto && autoActor != null) toast(`${nameOf(autoActor)} の時間切れ`);
   // 手番の食い違いは、ずれの一番早い兆候
   if (typeof m.toAct === "number" && state.toAct !== m.toAct) {
     net.err = "盤面がサーバとずれました。ホームに戻ってやり直してください";
@@ -4602,6 +5090,9 @@ async function netLoop(gen) {
         if (!document.getElementById("home").hidden) renderHome();
       }
       if (d.seq != null) net.since = d.seq;
+      // 残り時間は**封筒に載って**くる（手の電文には混ざらない）。
+      // 無ければ「測っていない」＝表示を消す
+      setClock(d.clock || null);
       const msgs = d.msgs || [];
       // 読み直した直後は、対局まるごとが一度に届く。
       // 1 手ごとに描き直すと重いうえ、済んだ手の音と動きが一斉に鳴る
@@ -4641,10 +5132,16 @@ function netHandle(m) {
         net.cpus = m.cpus || [];
         net.players = m.players || 4;
         net.me = m.you != null ? m.you : -1;
+        // 持ち時間は部屋の決め事。全員が同じ値を見る。
+        // ⚠ 1 人で遊ぶ時の好み（lobby.limits）は**上書きしない**。
+        //   部屋に入っただけで自分の設定が書き換わると分かりにくい
+        if (Array.isArray(m.limits) && m.limits.length === 6) limitsMs = m.limits.slice();
         if (!document.getElementById("home").hidden) renderHome();
         break;
       case "start": {
         net.seat = m.yourSeat;
+        // 繋ぎ直した端末でも残りを出せるように、開始の合図にも入っている
+        if (Array.isArray(m.limits) && m.limits.length === 6) limitsMs = m.limits.slice();
         saveGameSoon();   // 読み直したら、この部屋の続きに戻れるように
         document.getElementById("home").hidden = true;
         document.getElementById("home").style.display = "none";
@@ -4658,6 +5155,9 @@ function netHandle(m) {
       }
       case "act":
         netApply(m);
+        break;
+      case "chat":
+        onChat(m);
         break;
       case "over":
         break; // 決着は盤の状態から分かる
@@ -4721,6 +5221,8 @@ let lobby = {
     { kind: "cpu", level: 1 },
     { kind: "cpu", level: 1 },
   ],
+  // 場面ごとの持ち時間（秒）。並びは LIMIT_KEYS と同じ
+  limits: LIMIT_DEFAULT.slice(),
 };
 
 const LEVEL_NAMES = ["やさしい", "ふつう", "つよい", "さいきょう"];
@@ -4754,6 +5256,11 @@ function loadLobby() {
     if (raw) {
       const v = JSON.parse(raw);
       if (v && Array.isArray(v.members) && v.members.length >= 3) lobby = v;
+      // 前の版で保存した物には持ち時間が入っていない
+      if (!Array.isArray(lobby.limits) || lobby.limits.length !== 6) {
+        lobby.limits = LIMIT_DEFAULT.slice();
+      }
+      limitsMs = lobby.limits.map((v2) => v2 * 1000);
     }
   } catch {
     // 読めなくても既定のままで遊べる
@@ -4974,8 +5481,84 @@ function renderHome() {
       `${lobby.members.length} 人（あなた + CPU ${lv.length} 体: ${lv.join("・")}）　${BUILD}`;
   }
 
+  renderLimitsBox(invited);
   renderOnlineBox();
 }
+
+/**
+ * 待機所の「持ち時間」欄。
+ *
+ * 🔴 index.html には書かず**ここで作る**。ホーム画面の中身は HOME_HTML にも
+ * 同じ物があり（ensureHome が流し込む）、二重に持つと片方だけ古くなって
+ * 「人によって欄が出ない」という直しにくい壊れ方をする。
+ *
+ * オンラインでは部屋の決め事なので、**部屋を立てた人だけ**が変えられる。
+ * 変えた値はサーバへ 1 回でまとめて送り、全員の待機所に配り直される。
+ */
+function renderLimitsBox(invited) {
+  const card = document.querySelector("#home .homecard");
+  if (!card) return;
+  let box = document.getElementById("hlimits");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "hlimits";
+    // 「はじめる」より前、対戦相手の後ろに置く
+    const start = document.getElementById("hstart");
+    card.insertBefore(box, start);
+  }
+  // 招待リンクから来た人には、参加するまで出さない
+  const host = !net.on || net.me === 0;
+  box.hidden = invited;
+  if (invited) return;
+
+  const cur = (i) => {
+    const v = net.on ? Math.round(limitsMs[i] / 1000) : (lobby.limits[i] ?? LIMIT_DEFAULT[i]);
+    return v;
+  };
+  const secText = (v) => {
+    if (!v) return "無制限";
+    if (v < 60) return `${v} 秒`;
+    return v % 60 === 0 ? `${v / 60} 分` : `${Math.floor(v / 60)} 分 ${v % 60} 秒`;
+  };
+  const rows = LIMIT_LABELS.map((name, i) => {
+    const v = cur(i);
+    // 保存されている値が選択肢に無くても必ず出す
+    const opts = [...new Set([...LIMIT_CHOICES, v])].sort((x, y) => x - y);
+    const sel = opts
+      .map((o) => `<option value="${o}"${o === v ? " selected" : ""}>${secText(o)}</option>`)
+      .join("");
+    return `<div class="hlrow"><span class="hlname">${name}</span>` +
+      `<select data-i="${i}"${host ? "" : " disabled"}>${sel}</select></div>`;
+  }).join("");
+
+  box.innerHTML =
+    `<button class="hltoggle" id="hltoggle">持ち時間 <i>${limitsOpen ? "▴" : "▾"}</i></button>` +
+    `<div class="hlbody"${limitsOpen ? "" : " hidden"}>${rows}` +
+    `<div class="hlnote">時間が尽きると、代わりに無難な手が指されます。` +
+    (host ? "" : "部屋を立てた人だけが変えられます") + `</div></div>`;
+
+  box.querySelector("#hltoggle").addEventListener("click", () => {
+    limitsOpen = !limitsOpen;
+    renderLimitsBox(invited);
+  });
+  box.querySelectorAll("select").forEach((sel) => {
+    sel.addEventListener("change", (ev) => {
+      const i = +ev.currentTarget.dataset.i;
+      const v = +ev.currentTarget.value;
+      lobby.limits[i] = v;
+      limitsMs[i] = v * 1000;
+      saveLobby();
+      // オンラインでは部屋の決め事。**6 つまとめて 1 回で**送る
+      if (net.on) {
+        const body = { room: net.room, token: net.token };
+        LIMIT_KEYS.forEach((k, j) => { body[k] = Math.round(limitsMs[j] / 1000); });
+        api("settings", body).catch(() => {});
+      }
+    });
+  });
+}
+
+let limitsOpen = false;
 
 /**
  * 待機所のオンライン欄。
@@ -5259,6 +5842,15 @@ setInterval(() => {
   lastTick = now;
 }, 500);
 
+// 持ち時間。**エンジンの時計とは別物**（上の tick は交渉の打ち切り用で、
+// こちらは場面ごとの持ち時間）。0.2 秒ごとに残りを描き、
+// 1 人で遊んでいる時だけ、尽きたら代わりに指す。
+setInterval(() => {
+  if (!state) return;
+  stepLocalClock();
+  renderClock();
+}, 200);
+
 document.getElementById("newgame").addEventListener("click", () => { watching = false; newGame(true); });
 document.getElementById("watch").addEventListener("click", () => { watching = true; newGame(true); });
 /**
@@ -5395,6 +5987,11 @@ document.getElementById("disttoggle").addEventListener("click", (ev) => {
 
       <div class="sb-sep"></div>
 
+      <button class="sb-item" id="sb-fit">盤の位置と大きさを戻す</button>
+      <div class="sb-note">盤は掴んで動かせます。ホイールで拡げ縮み。二度押しでも戻ります</div>
+
+      <div class="sb-sep"></div>
+
       <button class="sb-item" id="sb-new">この面子でもう一度</button>
       <button class="sb-item" id="sb-home">待機所に戻る</button>
       <div class="sb-note">戻ると、いまの対局は終わります</div>
@@ -5432,6 +6029,10 @@ document.getElementById("disttoggle").addEventListener("click", (ev) => {
     // 離した時に一度だけ鳴らして、いまの大きさを耳で確かめられるようにする
     vol.addEventListener("change", () => sfx.play("click"));
 
+    box.querySelector("#sb-fit").addEventListener("click", () => {
+      resetBoardView();
+      close();
+    });
     box.querySelector("#sb-new").addEventListener("click", () => {
       close();
       askConfirm("この面子でもう一度始めますか？", "いまの対局は終わります", () => {

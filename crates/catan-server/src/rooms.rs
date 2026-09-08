@@ -21,6 +21,102 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const MAX_PLAYERS: usize = 4;
 
+/// ひとこと 1 つの長さの上限（文字数）。画面の幅が壊れない範囲
+pub const MAX_SAY_CHARS: usize = 120;
+/// 控えておく発言の数。繋ぎ直した人に渡す分
+pub const MAX_CHAT_KEPT: usize = 60;
+/// 同じ人が続けて発言できる間隔
+pub const SAY_INTERVAL_MS: u128 = 600;
+
+/* ---------------------------------------------------------------- 持ち時間
+
+   🔴🔴🔴 **時計はエンジンの外にしか置かない**。
+
+   `GameConfig::turn_time_limit_ms` は既にあるが、それは `negotiation_open()` を
+   通じて `legal_actions`（game.rs:581, 671）と `can_apply`（game.rs:1001, 1012）に
+   効く。サーバの時計は仮想（1 手 500ms）、端末の時計は実時間なので、
+   そこに本物の制限を入れると**手の個数がサーバと端末で食い違う**。
+   番号だけを配る方式なので、これは即座に盤の食い違いになる
+   （＝海上交易の控え漏れで踏んだのと同じ層の事故）。
+
+   だから `turn_time_limit_ms` は 3 か所すべてで `None` のまま据え置き、
+   ここで測るのは**サーバのローカルな締切だけ**。時間切れになったら
+   サーバが普通の手として `commit` する。端末から見れば、ただ誰かが指しただけ。   */
+
+/// 場面ごとの持ち時間（ミリ秒）。0 は「無制限」
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Limits {
+    /// 初期配置の開拓地
+    pub setup_settlement: u32,
+    /// 初期配置の道
+    pub setup_road: u32,
+    /// 盗賊を置く
+    pub robber: u32,
+    /// サイコロを振るか発展カードを使うか（振る前）
+    pub roll: u32,
+    /// 手番（振った後）
+    pub turn: u32,
+    /// 提案への返事
+    pub answer: u32,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Limits {
+            setup_settlement: 5 * 60_000,
+            setup_road: 60_000,
+            robber: 60_000,
+            roll: 30_000,
+            turn: 4 * 60_000,
+            answer: 15_000,
+        }
+    }
+}
+
+impl Limits {
+    /// 待機所から来た値を人が遊べる範囲に収める。0 は無制限として通す
+    pub fn clamp_one(v: i64) -> u32 {
+        if v <= 0 {
+            return 0;
+        }
+        (v as u32).clamp(5_000, 30 * 60_000)
+    }
+
+    pub fn as_array(&self) -> [u32; 6] {
+        [self.setup_settlement, self.setup_road, self.robber, self.roll, self.turn, self.answer]
+    }
+
+    /// 捨て札の持ち時間。盗賊と同じ場面（7 が出た時）なので合わせる
+    fn discard(&self) -> u32 { self.robber }
+    /// 提案者が相手を選ぶ時間。全員の返事を見てから決めるので返事の 3 倍
+    fn acceptees(&self) -> u32 { self.answer.saturating_mul(3) }
+    /// 街道建設カードの無償の道。道を置く動作なので初期配置の道と同じ
+    fn free_road(&self) -> u32 { self.setup_road }
+}
+
+/// 「いまどの場面か」を表す鍵。**これが変わったら締切を引き直す**。
+///
+/// 中身は `Game::fingerprint()` が読んでいる材料の部分集合なので、
+/// 新しい状態も新しい結線も増えない。毎周回で盤から作り直すので、
+/// 「ここでも引き直す」の書き忘れが起きない
+/// （海上交易の `history.push` 忘れと同じ型の事故を、構造で防ぐ）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct SceneKey {
+    turn: u32,
+    turn_player: u8,
+    to_act: u8,
+    prompt: u8,
+    rolled: bool,
+    setup_index: u8,
+    dev_played: bool,
+    free_roads: u8,
+}
+
+/// 取りに来なくなった人を待つ長さ。これを過ぎたら締切を詰める
+pub const AWAY_MS: u128 = 45_000;
+/// 取りに来ない人に残す猶予
+pub const AWAY_GRACE_MS: u128 = 3_000;
+
 /// 参加者ひとり。CPU は `token` を持たない
 pub struct Member {
     pub token: String,
@@ -35,11 +131,13 @@ pub struct Member {
     /// 最後に取りに来た時刻。**居るかどうかの判定はこれで行う**
     pub seen_at: u128,
     pub seat: Option<usize>,
+    /// 最後に発言した時刻。連投を抑えるためだけに使う
+    pub said_at: u128,
 }
 
 impl Member {
     pub fn new(token: String, name: String) -> Self {
-        Member { token, name, outbox: Vec::new(), seen_at: now_ms(), seat: None }
+        Member { token, name, outbox: Vec::new(), seen_at: now_ms(), seat: None, said_at: 0 }
     }
 
     /// 取りに来ていない時間。長く空いたら「接続待ち」として出す
@@ -80,6 +178,17 @@ pub struct Room {
     pub history: Vec<String>,
     /// 開始の合図（席ごとに中身が違うので人数ぶん持つ）
     pub start_msgs: Vec<String>,
+    /// ひとことの控え（直近だけ）。
+    ///
+    /// 🔴 **`history` に混ぜてはいけない**。`history` は繋ぎ直してきた人の端末が
+    /// 「手」として順に自分のエンジンへ入れ直す並びで、そこに手でない物が
+    /// 入ると盤が食い違う（＝直前に直したばかりの事故と同じ層）。
+    /// だから別の入れ物に持ち、再送も別に行う。
+    pub chat: Vec<String>,
+    /// 場面ごとの持ち時間。待機所で変えられる
+    pub limits: Limits,
+    /// いま測っている場面と、その締切（時刻）
+    pub deadline: Option<(SceneKey, u128)>,
 }
 
 pub fn now_ms() -> u128 {
@@ -138,6 +247,9 @@ impl Room {
             msgseq: 0,
             history: Vec::new(),
             start_msgs: Vec::new(),
+            chat: Vec::new(),
+            limits: Limits::default(),
+            deadline: None,
         }
     }
 
@@ -201,7 +313,29 @@ impl Room {
             return None;
         }
         let last = m.outbox.last().map(|(id, _)| *id).unwrap_or(since);
-        Some(format!("{{\"seq\":{},\"msgs\":[{}]}}", last, items.join(",")))
+        Some(format!(
+            "{{\"seq\":{},\"msgs\":[{}]{}}}",
+            last,
+            items.join(","),
+            self.clock_json()
+        ))
+    }
+
+    /// 残り時間。**電文ではなく取りに来た応答の封筒に載せる**。
+    ///
+    /// 電文にすると (1) 控えの枠を手と食い合う (2)「手ではない種類」が増える
+    /// という 2 つの困りごとが出る。封筒なら構造的に `history` に入りようがなく、
+    /// 取りに来るたびに作り直すので必ず新しい。
+    pub fn clock_json(&self) -> String {
+        let (Some(left), Some(limit)) = (self.time_left_ms(), self.time_limit_ms()) else {
+            return String::new();
+        };
+        let seat = self
+            .game
+            .as_ref()
+            .map(|g| g.to_act as i32)
+            .unwrap_or(-1);
+        format!(",\"clock\":{{\"leftMs\":{left},\"limitMs\":{limit},\"seat\":{seat}}}")
     }
 
     /// 取りこぼしを防ぐため、いまの控えの先端を返す
@@ -231,13 +365,15 @@ impl Room {
             })
             .collect();
         let cpus: Vec<String> = self.cpus.iter().map(|l| l.to_string()).collect();
+        let l = self.limits.as_array();
         format!(
-            "{{\"t\":\"lobby\",\"code\":\"{}\",\"members\":[{}],\"cpus\":[{}],\"players\":{},\"you\":{}}}",
+            "{{\"t\":\"lobby\",\"code\":\"{}\",\"members\":[{}],\"cpus\":[{}],\"players\":{},\"you\":{},\"limits\":[{},{},{},{},{},{}]}}",
             self.code,
             names.join(","),
             cpus.join(","),
             self.players(),
-            you
+            you,
+            l[0], l[1], l[2], l[3], l[4], l[5]
         )
     }
 
@@ -318,6 +454,7 @@ impl Room {
         self.game = Some(game);
         self.evseq = 0;
         self.phase = Phase::Playing;
+        self.deadline = None;
         self.again.clear();
         self.bot_at = now_ms() + 700;
 
@@ -350,6 +487,7 @@ impl Room {
             .collect::<Vec<_>>()
             .join(",");
 
+        let lim = self.limits.as_array();
         let mut msgs = Vec::new();
         for (mi, m) in self.members.iter().enumerate() {
             let seat = m.seat.unwrap_or(0);
@@ -357,9 +495,9 @@ impl Room {
                 mi,
                 format!(
                     "{{\"t\":\"start\",\"seeds\":[{},{},{},{}],\"players\":{},\
-                     \"yourSeat\":{},\"names\":[{}],\"humans\":[{}],\"levels\":[{}]}}",
+                     \"yourSeat\":{},\"names\":[{}],\"humans\":[{}],\"levels\":[{}],\"limits\":[{},{},{},{},{},{}]}}",
                     seeds[0], seeds[1], seeds[2], seeds[3], players, seat, names_json, humans_json,
-                    levels_json
+                    levels_json, lim[0], lim[1], lim[2], lim[3], lim[4], lim[5]
                 ),
             ));
         }
@@ -471,6 +609,14 @@ impl Room {
         };
         if !game.can_apply(&a) {
             return Err("その条件では指せません");
+        }
+        // 🔴 対案は「候補を 1 つ積む」を何度も送る**多手順**。
+        //    ところが CounterAlt / CounterAltRemove は場面の鍵を 1 つも動かさない
+        //    （prompt も to_act も turn も rolled も変わらない）ので、
+        //    鍵だけを見ていると 15 秒の間に条件を組み立てきれない。
+        //    自分で手を動かしている間は締切を引き直す。
+        if matches!(kind, "alt" | "altRemove") {
+            self.extend_deadline();
         }
         let echo = match kind {
             "altRemove" => format!("\"k\":\"altRemove\",\"n\":{n}"),
@@ -605,6 +751,278 @@ impl Room {
         Ok(())
     }
 
+    // ---------------------------------------------------------------- 持ち時間
+
+    /// いまの場面の鍵。対局中でなければ `None`
+    fn scene_key(&self) -> Option<SceneKey> {
+        let g = self.game.as_ref()?;
+        if g.is_over() {
+            return None;
+        }
+        use catan_core::action::Prompt::*;
+        let prompt = match g.prompt {
+            SetupSettlement => 0,
+            SetupRoad => 1,
+            PlayTurn => 2,
+            Discard => 3,
+            MoveRobber => 4,
+            FreeRoad => 5,
+            DecideTrade => 6,
+            DecideAcceptees => 7,
+            GameOver => return None,
+        };
+        Some(SceneKey {
+            turn: g.turn,
+            turn_player: g.turn_player,
+            to_act: g.to_act,
+            prompt,
+            rolled: g.rolled,
+            setup_index: g.setup_index,
+            // 発展カードを振る前に使ったら、振るまでの時間を仕切り直す
+            dev_played: g.dev_played_this_turn,
+            // 無償の道は 2 本を別々に数える（2 本目が 1 本目と分け合わない）
+            free_roads: g.free_roads,
+        })
+    }
+
+    /// その場面に与える長さ。0 なら無制限
+    fn limit_of(&self, k: &SceneKey) -> u32 {
+        let l = &self.limits;
+        match k.prompt {
+            0 => l.setup_settlement,
+            1 => l.setup_road,
+            2 => {
+                if k.rolled {
+                    l.turn
+                } else {
+                    l.roll
+                }
+            }
+            3 => l.discard(),
+            4 => l.robber,
+            5 => l.free_road(),
+            6 => l.answer,
+            7 => l.acceptees(),
+            _ => 0,
+        }
+    }
+
+    /// いま指す番の席が人かどうか（CPU の席は `step_bot` が動かすので測らない）
+    fn human_member_to_act(&self) -> Option<usize> {
+        let g = self.game.as_ref()?;
+        self.seat_member.get(g.to_act as usize).copied().flatten()
+    }
+
+    /// 締切までの残り（ミリ秒）。測っていないなら `None`
+    pub fn time_left_ms(&self) -> Option<u32> {
+        let (_, at) = self.deadline?;
+        Some(at.saturating_sub(now_ms()).min(u32::MAX as u128) as u32)
+    }
+
+    /// いま測っている場面の持ち時間
+    pub fn time_limit_ms(&self) -> Option<u32> {
+        let (k, _) = self.deadline.as_ref()?;
+        Some(self.limit_of(k))
+    }
+
+    /// 場面が変わっていれば締切を引き直す。**毎周回で呼ぶ**。
+    /// 時刻は外から渡す（エンジンと同じ考え方。試験が実時間を待たずに済む）
+    fn refresh_deadline(&mut self, now: u128) {
+        let Some(k) = self.scene_key() else {
+            self.deadline = None;
+            return;
+        };
+        // 人の席でなければ測らない
+        let Some(mi) = self.human_member_to_act() else {
+            self.deadline = None;
+            return;
+        };
+        let limit = self.limit_of(&k);
+        if limit == 0 {
+            self.deadline = None;
+            return;
+        }
+        let same = matches!(self.deadline, Some((old, _)) if old == k);
+        if !same {
+            self.deadline = Some((k, now + limit as u128));
+        } else if let Some((_, at)) = &mut self.deadline {
+            // 待機所で長さを縮めたら、いまの場面にもすぐ効かせる
+            // （そうしないと「変えたのに効かない」場面が 1 つ残る）
+            let cap = now + limit as u128;
+            if *at > cap {
+                *at = cap;
+            }
+        }
+        // 取りに来なくなった人は待たない。対局が何十分も止まるのを防ぐ
+        let away = self.members.get(mi).map(|m| m.away_ms()).unwrap_or(0);
+        if away > AWAY_MS {
+            let cut = now + AWAY_GRACE_MS;
+            if let Some((_, at)) = &mut self.deadline {
+                if *at > cut {
+                    *at = cut;
+                }
+            }
+        }
+    }
+
+    /// 場面を変えない手（対案の積み下ろし）を指した時に、締切を戻す。
+    ///
+    /// 対案は「候補として積む」を 1 つずつ送る多手順なので、
+    /// 鍵だけを見ていると 15 秒の間に条件を組み立てきれない。
+    /// 引き直すのは残りが減っている時だけ（伸ばし続けはしない）。
+    fn extend_deadline(&mut self) {
+        let Some((k, at)) = self.deadline else { return };
+        let limit = self.limit_of(&k) as u128;
+        if limit == 0 {
+            return;
+        }
+        let want = now_ms() + limit;
+        if want > at {
+            self.deadline = Some((k, want));
+        }
+    }
+
+    /// 時間切れなら既定の手を指す。指したら true。**掃引スレッドから呼ぶ**
+    pub fn step_deadline(&mut self) -> bool {
+        self.step_deadline_at(now_ms())
+    }
+
+    /// 時刻を外から渡す版。試験が実時間を待たずに回せるようにするため
+    pub fn step_deadline_at(&mut self, now: u128) -> bool {
+        if !matches!(self.phase, Phase::Playing) {
+            self.deadline = None;
+            return false;
+        }
+        self.refresh_deadline(now);
+        let Some((_, at)) = self.deadline else { return false };
+        if now < at {
+            return false;
+        }
+        // サイコロの演出の途中では割り込まない（振った直後に手番が飛ぶと読めない）
+        if now < self.bot_at {
+            return false;
+        }
+        let Some(a) = self.default_action() else {
+            // 指せる手が無い場面。測るのをやめる
+            self.deadline = None;
+            return false;
+        };
+        let g = self.game.as_ref().unwrap();
+        let acts = g.legal_actions();
+        let Some(i) = acts.iter().position(|x| *x == a) else {
+            self.deadline = None;
+            return false;
+        };
+        // 🔴 普通の手として配る。history にも指紋にも載るので、
+        //    端末から見れば「誰かが指した」のと区別が付かない＝盤はズレない
+        let _ = self.commit(a, format!("\"auto\":true,\"i\":{i}"));
+        true
+    }
+
+    /// 時間切れで指す手。**必ず `legal_actions` の中から選ぶ**
+    fn default_action(&self) -> Option<Action> {
+        let g = self.game.as_ref()?;
+        let acts = g.legal_actions();
+        if acts.is_empty() {
+            return None;
+        }
+        use catan_core::action::Prompt::*;
+        match g.prompt {
+            // 一番よく採れる場所へ置く。賢くしすぎると席を立つ方が得になる
+            SetupSettlement => acts
+                .iter()
+                .filter_map(|a| match a {
+                    Action::SetupSettlement(n) => Some((*n, node_pip_sum(g, *n))),
+                    _ => None,
+                })
+                // 同点は小さい番号（決定的にする）
+                .max_by_key(|(n, p)| (*p, std::cmp::Reverse(*n)))
+                .map(|(n, _)| Action::SetupSettlement(n)),
+            // 道はどこでも大差ない。一覧の先頭で決定的に選ぶ
+            SetupRoad | FreeRoad | MoveRobber => acts.first().copied(),
+            PlayTurn => {
+                if !g.rolled {
+                    acts.iter().find(|a| matches!(a, Action::Roll)).copied()
+                } else {
+                    acts.iter().find(|a| matches!(a, Action::EndTurn)).copied()
+                }
+            }
+            // 捨てた後の手札が一番平らになる組み合わせ（偏りを残さない）
+            Discard => {
+                let hand = g.players[g.to_act as usize].hand;
+                acts.iter()
+                    .filter(|a| matches!(a, Action::Discard(_)))
+                    .min_by_key(|a| {
+                        let Action::Discard(b) = a else {
+                            return u32::MAX;
+                        };
+                        (0..5)
+                            .map(|r| {
+                                let left = hand[r].saturating_sub(b[r]) as u32;
+                                left * left
+                            })
+                            .sum::<u32>()
+                    })
+                    .copied()
+            }
+            DecideTrade => acts.iter().find(|a| matches!(a, Action::RejectTrade)).copied(),
+            DecideAcceptees => acts.iter().find(|a| matches!(a, Action::CancelTrade)).copied(),
+            GameOver => None,
+        }
+    }
+
+    // ---------------------------------------------------------------- ひとこと
+
+    /// 発言を 1 つ受けて全員へ配る。
+    ///
+    /// 手ではないので `history` には積まない（積むと繋ぎ直した端末が
+    /// これを手として食おうとして盤が壊れる）。代わりに `chat` に控え、
+    /// 繋ぎ直してきた人には [`Room::resend_chat`] で別に渡す。
+    pub fn say(&mut self, token: &str, text: &str) -> Result<(), &'static str> {
+        let Some(mi) = self.member_of(token) else {
+            return Err("その鍵は通りません");
+        };
+        // 空白だけの発言は捨てる。長すぎる物は切る（画面が壊れるのを防ぐ）
+        let text: String = text.trim().chars().take(MAX_SAY_CHARS).collect();
+        if text.is_empty() {
+            return Err("空です");
+        }
+        // 連投よけ。速すぎる分は黙って捨てる（撥ねると画面に赤字が出て煩い）
+        let now = now_ms();
+        {
+            let m = &mut self.members[mi];
+            if now.saturating_sub(m.said_at) < SAY_INTERVAL_MS {
+                return Ok(());
+            }
+            m.said_at = now;
+        }
+        let (name, seat) = {
+            let m = &self.members[mi];
+            (crate::http::esc(&m.name), m.seat)
+        };
+        let seat = seat.map(|s| s.to_string()).unwrap_or_else(|| "null".into());
+        // ⚠ ここで潰すのは JSON の記号だけ。**山括弧はそのまま通る**ので、
+        //   画面に出す側が必ず文字として逃がすこと（app.js の escapeHtml）
+        let msg = format!(
+            "{{\"t\":\"chat\",\"who\":{mi},\"seat\":{seat},\"name\":\"{name}\",\"text\":\"{}\"}}",
+            crate::http::esc(&text)
+        );
+        self.chat.push(msg.clone());
+        if self.chat.len() > MAX_CHAT_KEPT {
+            let cut = self.chat.len() - MAX_CHAT_KEPT;
+            self.chat.drain(..cut);
+        }
+        self.broadcast(&msg);
+        Ok(())
+    }
+
+    /// 繋ぎ直してきた人へ、直近の発言を渡し直す
+    pub fn resend_chat(&mut self, mi: usize) {
+        for msg in self.chat.clone() {
+            self.send_to(mi, &msg);
+        }
+    }
+
     /// 「もう一度遊ぶ」。**全員が押したら**進む
     pub fn vote_again(&mut self, token: &str) {
         self.again.insert(token.to_string());
@@ -631,6 +1049,16 @@ impl Room {
     }
 }
 
+/// その頂点に面した陸ヘクスの pip（出やすさ）の合計
+fn node_pip_sum(g: &Game, n: catan_core::topology::NodeId) -> u32 {
+    let topo = catan_core::topology::Topology::get();
+    topo.node_tiles[n as usize]
+        .as_slice()
+        .iter()
+        .map(|&t| g.board.tile_pips(t) as u32)
+        .sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -642,13 +1070,18 @@ mod tests {
     /// 本物の端末（web/colonist/app.js の `netApply`）と同じことをする
     struct Client {
         game: Game,
+        /// 直前に番号を当てた時の一覧。サーバ側と丸ごと比べるために控える
+        last_acts: Vec<Action>,
     }
 
     impl Client {
         fn new(room: &Room) -> Client {
             let players = room.seat_member.len();
             let mut cfg = GameConfig::default();
-            cfg.turn_clock = TurnClock::PerAction { ms: 500 };
+            // 🔴 **本物のブラウザと同じ設定にする**。
+            //    ここを PerAction にしていた頃は、誰も動かしていない構成を
+            //    検査していた（＝壊れた計器）。端末は wasm lib.rs:137 で Realtime。
+            cfg.turn_clock = TurnClock::Realtime;
             cfg.turn_time_limit_ms = None;
             cfg.answer_last_mask = (0..players)
                 .filter(|&s| room.seat_member[s].is_some())
@@ -663,10 +1096,14 @@ mod tests {
                     s[3] as u64,
                     cfg,
                 ),
+                last_acts: Vec::new(),
             }
         }
 
         fn replay(&mut self, msg: &str) {
+            // ブラウザは 0.5 秒ごとに実時間を流し込む（app.js の setInterval）。
+            // 時計が規則に漏れていたら、ここで盤が割れて指紋の照合が落ちる
+            self.game.tick(500);
             if let Some(rest) = msg.split("\"k\":\"maritime\"").nth(1) {
                 let g = nums(rest, "\"g\":[");
                 let w = nums(rest, "\"w\":[");
@@ -701,6 +1138,7 @@ mod tests {
                     .expect("番号のある手のはず");
                 let acts = self.game.legal_actions();
                 assert!(i < acts.len(), "配られた番号が端末の一覧に無い");
+                self.last_acts = acts.clone();
                 self.game.apply(acts[i]);
             }
             // サーバが電文に添えた指紋と、いま作った盤の指紋が合うこと
@@ -848,6 +1286,86 @@ mod tests {
         );
         std::fs::write(&path, body).unwrap();
         println!("書き出した: {path}（手 {} / 海上交易 {trades}）", room.history.len());
+    }
+
+    /// 🔴 番号方式の**本当の前提**: サーバと端末で合法手の一覧が
+    /// 並びも個数も一致すること。ここが割れると、次に配られる番号が
+    /// 別の手を指す（＝盤が静かにズレる）。
+    ///
+    /// これまでは `i < acts.len()` しか見ていなかったので、
+    /// 一覧がずれていても範囲内なら通ってしまっていた。
+    #[test]
+    fn サーバと端末の合法手は並びも個数も一致する() {
+        let mut steps = 0usize;
+        for seed in 0..12u64 {
+            let (room, _) = play(3_000 + seed);
+            let mut c = Client::new(&room);
+            let mut server = Client::new(&room);
+            for msg in room.history.clone() {
+                c.replay(&msg);
+                server.replay(&msg);
+                let a = c.game.legal_actions();
+                let b = server.game.legal_actions();
+                assert_eq!(a.len(), b.len(), "seed {seed}: 合法手の個数が食い違った");
+                assert_eq!(a, b, "seed {seed}: 合法手の並びが食い違った");
+                steps += 1;
+            }
+        }
+        println!("{steps} 手で一覧を突き合わせた");
+        assert!(steps > 2000);
+    }
+
+    /// 🔴 この機能の一番の目的: **人が席を立っても対局が前へ進む**。
+    ///
+    /// 人の席が 1 手も指さないまま、時間切れの自動着手だけで
+    /// 決着まで行けることを確かめる。どこか 1 つの場面に出口が無いと
+    /// ここで止まる。
+    #[test]
+    fn 誰も指さなくても対局は最後まで進む() {
+        for seed in 0..6u64 {
+            let mut room = Room::new("TEST".into());
+            room.members.push(Member::new("tok".into(), "私".into()));
+            room.balance(4);
+            // 待たずに済むよう、持ち時間を最短にする
+            room.limits = Limits {
+                setup_settlement: 1,
+                setup_road: 1,
+                robber: 1,
+                roll: 1,
+                turn: 1,
+                answer: 1,
+            };
+            room.start_with_seeds([
+                (7_000 + seed) as u32,
+                (seed as u32) ^ 0x1234_5678,
+                (seed as u32) ^ 0x0f0f_0f0f,
+                (seed as u32) ^ 0xabcd_ef01,
+            ]);
+            let mut moves = 0usize;
+            let mut stuck = false;
+            // 仮想の時刻を進める。実時間を待つ必要はない
+            let mut now = now_ms();
+            for _ in 0..6000 {
+                room.bot_at = 0;
+                if room.game.as_ref().map_or(true, |g| g.is_over()) {
+                    break;
+                }
+                // 人の席は自動着手、CPU の席は普段どおり
+                if room.step_deadline_at(now) || room.step_bot() {
+                    moves += 1;
+                    continue;
+                }
+                // 何も起きないなら時刻を進める（締切まで待つ）
+                now += 1_000;
+                if now > now_ms() + 10 * 60 * 60 * 1000 {
+                    stuck = true;
+                    break;
+                }
+            }
+            assert!(!stuck, "seed {seed}: 誰も指せずに止まった（{moves} 手目）");
+            let g = room.game.as_ref().unwrap();
+            assert!(g.is_over(), "seed {seed}: {moves} 手動いたが決着しなかった");
+        }
     }
 
     /// 配る電文には必ず指紋が入っていること。

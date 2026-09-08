@@ -810,6 +810,16 @@ pub extern "C" fn state_json() -> *const u8 {
         j.bool(g.rolled);
         j.key("isSetup");
         j.bool(g.is_setup());
+        // 「いまどの場面か」を外から言い当てるための材料。
+        // 持ち時間はエンジンの外（ホスト）で測る決まりなので、
+        // ホストが場面の変わり目を見分けられるように出しておく。
+        // ⚠ どれも legal_actions にも指紋にも影響しない**読み取り専用の写し**。
+        j.key("setupIndex");
+        j.num(g.setup_index as f32);
+        j.key("devPlayed");
+        j.bool(g.dev_played_this_turn);
+        j.key("freeRoads");
+        j.num(g.free_roads as f32);
         j.key("robber");
         j.num(g.board.robber as f32);
         // 出た目の分布（2..=12）。偏っているのか、そう見えるだけなのかを見分けるため

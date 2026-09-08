@@ -34,6 +34,10 @@ fn main() {
             {
                 let mut r = rooms.lock().unwrap();
                 for room in r.values_mut() {
+                    // 持ち時間が尽きた席の代わりに指す。**先に見る** ──
+                    // 人が固まっている間も CPU は動くので、後回しだと
+                    // 時間切れの判定がいつまでも回ってこない
+                    room.step_deadline();
                     room.step_bot();
                 }
                 // 誰も居なくなった部屋は畳む（30 分）
@@ -116,7 +120,7 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
     match rest {
         // 部屋を立てる
         "create" => {
-            let name = http::field(&req.body, "name").unwrap_or("プレイヤー").to_string();
+            let name = http::field(&req.body, "name").unwrap_or_else(|| "プレイヤー".into());
             let players = http::field_num(&req.body, "players").unwrap_or(4).clamp(3, 4) as usize;
             let code = new_code();
             let token = new_token();
@@ -133,8 +137,8 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
 
         // 合言葉で入る
         "join" => {
-            let code = http::field(&req.body, "room").unwrap_or("").to_uppercase();
-            let name = http::field(&req.body, "name").unwrap_or("プレイヤー").to_string();
+            let code = http::field(&req.body, "room").unwrap_or_default().to_uppercase();
+            let name = http::field(&req.body, "name").unwrap_or_else(|| "プレイヤー".into());
             let mut r = rooms.lock().unwrap();
             let Some(room) = r.get_mut(&code) else {
                 http::send_err(stream, "404 Not Found", "その合言葉の部屋はありません");
@@ -173,6 +177,19 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
                     *slot = lv.clamp(0, 3) as u32;
                 }
             }
+            // 持ち時間。**6 つまとめて 1 回で**受ける（1 つずつだと待機所を
+            // 触るたびに何往復もする）。単位は秒で受けてミリ秒に直す
+            {
+                use rooms::Limits;
+                let f = |k: &str| http::field_num(&req.body, k);
+                let l = &mut room.limits;
+                if let Some(v) = f("tSetupS") { l.setup_settlement = Limits::clamp_one(v * 1000); }
+                if let Some(v) = f("tSetupR") { l.setup_road = Limits::clamp_one(v * 1000); }
+                if let Some(v) = f("tRobber") { l.robber = Limits::clamp_one(v * 1000); }
+                if let Some(v) = f("tRoll") { l.roll = Limits::clamp_one(v * 1000); }
+                if let Some(v) = f("tTurn") { l.turn = Limits::clamp_one(v * 1000); }
+                if let Some(v) = f("tAnswer") { l.answer = Limits::clamp_one(v * 1000); }
+            }
             room.send_lobby();
             http::send_json(stream, "{\"ok\":true}");
         }
@@ -190,7 +207,7 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
         // 手を指す。**手番かどうかはここで裁く**
         "act" => {
             let mut r = rooms.lock().unwrap();
-            let token = http::field(&req.body, "token").unwrap_or("").to_string();
+            let token = http::field(&req.body, "token").unwrap_or_default();
             let Some(room) = room_of(&mut r, req) else {
                 http::send_err(stream, "404 Not Found", "部屋がありません");
                 return;
@@ -222,13 +239,28 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
 
         "again" => {
             let mut r = rooms.lock().unwrap();
-            let token = http::field(&req.body, "token").unwrap_or("").to_string();
+            let token = http::field(&req.body, "token").unwrap_or_default();
             let Some(room) = room_of(&mut r, req) else {
                 http::send_err(stream, "404 Not Found", "部屋がありません");
                 return;
             };
             room.vote_again(&token);
             http::send_json(stream, "{\"ok\":true}");
+        }
+
+        // ひとこと。**手ではない**ので対局の履歴には積まれない
+        "chat" => {
+            let mut r = rooms.lock().unwrap();
+            let token = http::field(&req.body, "token").unwrap_or_default();
+            let text = http::field(&req.body, "text").unwrap_or_default();
+            let Some(room) = room_of(&mut r, req) else {
+                http::send_err(stream, "404 Not Found", "部屋がありません");
+                return;
+            };
+            match room.say(&token, &text) {
+                Ok(()) => http::send_json(stream, "{\"ok\":true}"),
+                Err(e) => http::send_err(stream, "409 Conflict", e),
+            }
         }
 
         "home" => {
@@ -284,6 +316,8 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
                     // 対局中なら、作り直すのに要る物を丸ごと渡す
                     room.send_lobby();
                     room.resend_game(mi);
+                    // ひとことは手ではないので、対局の並びとは別に渡す
+                    room.resend_chat(mi);
                 }
             }
 
@@ -307,7 +341,11 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
                     if std::time::Instant::now() >= deadline {
                         // 何も無かった。**先端の番号だけ返す**（次はそこから聞く）
                         let seq = room.head_seq(mi).max(since);
-                        http::send_json(stream, &format!("{{\"seq\":{seq},\"msgs\":[]}}"));
+                        let clock = room.clock_json();
+                        http::send_json(
+                            stream,
+                            &format!("{{\"seq\":{seq},\"msgs\":[]{clock}}}"),
+                        );
                         return;
                     }
                 }

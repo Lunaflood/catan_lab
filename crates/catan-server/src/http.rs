@@ -168,21 +168,54 @@ pub fn esc(s: &str) -> String {
 
 /// 受け取る JSON はこちらが決めた形しか来ない。素朴に値だけ拾う。
 /// ⚠ 汎用のパーサではない（入れ子や配列は扱わない）
-pub fn field<'a>(body: &'a str, key: &str) -> Option<&'a str> {
+/// 本文から 1 つの値を取り出す。**JSON の逃げ（\\" や \\n）を正しく解く**。
+///
+/// 🔴 素朴に「次の " まで」で切ると、`"text":"彼は\\"はい\\"と言った"` のような
+/// 値が **途中で切れる**。ひとことは人が自由に打つ文字列なので、
+/// 引用符も改行も普通に入ってくる。
+pub fn field(body: &str, key: &str) -> Option<String> {
     let pat = format!("\"{key}\"");
     let i = body.find(&pat)? + pat.len();
     let rest = &body[i..];
     let c = rest.find(':')? + 1;
     let rest = rest[c..].trim_start();
-    if let Some(r) = rest.strip_prefix('"') {
-        let end = r.find('"')?;
-        Some(&r[..end])
-    } else {
+    let Some(r) = rest.strip_prefix('"') else {
+        // 裸の値（数や true）。区切りまで
         let end = rest
             .find(|c: char| c == ',' || c == '}' || c.is_whitespace())
             .unwrap_or(rest.len());
-        Some(&rest[..end])
+        return Some(rest[..end].to_string());
+    };
+    let mut out = String::new();
+    let mut it = r.chars();
+    while let Some(ch) = it.next() {
+        match ch {
+            '"' => return Some(out),
+            '\\' => match it.next()? {
+                '"' => out.push('"'),
+                '\\' => out.push('\\'),
+                '/' => out.push('/'),
+                'n' => out.push('\n'),
+                'r' => out.push('\r'),
+                't' => out.push('\t'),
+                'b' => out.push('\u{8}'),
+                'f' => out.push('\u{c}'),
+                'u' => {
+                    let hex: String = it.by_ref().take(4).collect();
+                    let v = u32::from_str_radix(&hex, 16).ok()?;
+                    // 代理対（絵文字など）は下側だけ来ても壊さない
+                    match char::from_u32(v) {
+                        Some(c2) => out.push(c2),
+                        None => out.push('\u{fffd}'),
+                    }
+                }
+                other => out.push(other),
+            },
+            c2 => out.push(c2),
+        }
     }
+    // 閉じの " が無い＝壊れた本文
+    None
 }
 
 /// `"g":[1,0,2,0,0]` のような 5 要素の配列だけ拾う（資源の束）
@@ -215,5 +248,42 @@ pub fn mime_of(path: &str) -> &'static str {
         "json" => "application/json; charset=utf-8",
         "svg" => "image/svg+xml",
         _ => "application/octet-stream",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 🔴 ひとことは人が自由に打つ文字列。引用符も改行も普通に入る。
+    /// 素朴に「次の " まで」で切っていた頃は、そこで**文が切れていた**
+    #[test]
+    fn 逃がした文字を含む値を最後まで取れる() {
+        let body = r#"{"room":"AB12","text":"彼は\"はい\"と言った\n改行も\\逆斜線も","n":3}"#;
+        assert_eq!(field(body, "room").as_deref(), Some("AB12"));
+        assert_eq!(
+            field(body, "text").as_deref(),
+            Some("彼は\"はい\"と言った\n改行も\\逆斜線も")
+        );
+        assert_eq!(field(body, "n").as_deref(), Some("3"));
+    }
+
+    #[test]
+    fn 逃がした値を書き出して読み直すと元に戻る() {
+        for src in [
+            "ふつうの文",
+            "引用符 \" を含む",
+            "逆斜線 \\ と改行\nと tab\t",
+            "絵文字 🎲 と記号 <b>&amp;</b>",
+            "\"}{\"room\":\"HACK\",\"text\":\"割り込み",
+        ] {
+            let body = format!("{{\"text\":\"{}\"}}", esc(src));
+            assert_eq!(field(&body, "text").as_deref(), Some(src), "元に戻らない: {src}");
+        }
+    }
+
+    #[test]
+    fn 閉じていない値は撥ねる() {
+        assert_eq!(field(r#"{"text":"切れている"#, "text"), None);
     }
 }
