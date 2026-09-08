@@ -1851,21 +1851,21 @@ function renderRollDist() {
 
   // 2..12 の理論比（1,2,3,4,5,6,5,4,3,2,1）/36
   const theory = [1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1];
+  // 🔴 高さは **px ではなく割合**で入れる。
+  //    px の決め打ちだと、回数が増えるほど棒が枠に貼り付いて差が読めなくなる。
+  //    一番多い目を 100% として、そこからの比で描けば、何回振っても形が保たれる。
   const max = Math.max(...c, 1);
-  // 棒の取り分。上に回数、下に目を置くので、100px の枠から 30px ほど残す
-  const BAR = 70;
   const bars = c
     .map((n, i) => {
       const sum = i + 2;
       const exp = (theory[i] / 36) * total;
-      const h = Math.round((n / max) * BAR);
-      const eh = Math.round((exp / max) * BAR) + 14; // 目の字のぶんだけ持ち上げる（実測 14px）
+      const h = (n / max) * 100;
+      const eh = Math.min(100, (exp / max) * 100);
       const cls = sum === 7 ? " seven" : sum === 6 || sum === 8 ? " hot" : "";
       return `<span class="rdbar${cls}"
                     title="${sum}: ${n} 回（理論 ${exp.toFixed(1)} 回）">
         <em>${n}</em>
-        <i style="height:${h}px"></i>
-        <u style="bottom:${eh}px"></u>
+        <span class="rdcol"><i style="height:${h.toFixed(1)}%"></i><u style="bottom:${eh.toFixed(1)}%"></u></span>
         <b>${sum}</b>
       </span>`;
     })
@@ -3421,6 +3421,13 @@ const blockedTraders = new Set();
 let autoRejectSeq = null;
 /** いつ断ったか。返事が返るまでの間だけカードを出さないでおくのに使う */
 let autoRejectAt = 0;
+/**
+ * 順番待ちの間に押した答え。番が来たら送る。
+ *
+ * エンジンは 1 人ずつ聞く作りだが、提案のカードは全員に同時に出ている。
+ * 押せない方が不自然なので、押した物を預かって代わりに待つ。
+ */
+let pendingAnswer = null;
 
 /** ブロックの入切を尋ねる小窓。プレイヤー欄の点数の隣に出す */
 function askBlock(pid, anchor) {
@@ -3475,7 +3482,21 @@ function renderOffers() {
   if (!t || state.prompt !== "DECIDE_TRADE") {
     answerMode = false;
     autoRejectSeq = null;
+    pendingAnswer = null;
     return;
+  }
+  // 自分が出した提案は右上に出さない。答えるのは相手で、
+  // こちらは返事が出そろってから「相手を選ぶ」画面で決める
+  if (t.proposer === mySeat) { pendingAnswer = null; return; }
+
+  // ★ 順番待ちの間に押した答えを預かって、番が来たら送る。
+  //   エンジンは 1 人ずつ聞く作りだが、**押す方は待たされたくない**。
+  //   カードは全員に同時に出ているので、押せない方が不自然。
+  const seqNow = state.last ? state.last.seq : 0;
+  if (pendingAnswer && pendingAnswer.seq !== seqNow) pendingAnswer = null;
+  if (pendingAnswer) {
+    const a2 = state.actions.find((x) => x.kind === pendingAnswer.kind);
+    if (a2) { const k = pendingAnswer; pendingAnswer = null; play(a2.i); return; }
   }
 
   // 止めている相手の提案は、カードを出さずにそのまま断る
@@ -3497,8 +3518,7 @@ function renderOffers() {
   }
   if (answerMode) return;   // 対案を組んでいる間は下のパネルに任せる
 
-  const acc = state.actions.find((a) => a.kind === "ACCEPT_TRADE");
-  const rej = state.actions.find((a) => a.kind === "REJECT_TRADE");
+  const me0 = state.players.find((p) => p.id === mySeat) || state.players.find((p) => p.human);
   // 手札と同じカードの絵で出す
   const chips = (arr) => RES.map((r, i) => (arr[i] ? cardMini(r, arr[i], "offer") : "")).join("");
 
@@ -3513,8 +3533,18 @@ function renderOffers() {
                        }">${MARK[a.state] || "…"}</span>`)
     .join("");
 
+  // 押した印は**再描画をまたいで残す**。
+  // その場でクラスを足すだけでは次の描き直しで消え、「押せていない」ように見える。
+  // 送る前は預かった答え、送った後はサーバが返した自分の返事を見る。
+  const mine = (t.answers || []).find((a) => a.p === mySeat);
+  const chosen =
+    pendingAnswer && pendingAnswer.seq === seqNow ? pendingAnswer.kind
+    : mine && mine.state === "ACCEPTED" ? "ACCEPT_TRADE"
+    : mine && mine.state === "REJECTED" ? "REJECT_TRADE"
+    : mine && mine.state === "COUNTER" ? "COUNTER_OFFER"
+    : null;
   const card = document.createElement("div");
-  card.className = "offercard";
+  card.className = "offercard" + (chosen ? " answered" : "");
   card.innerHTML = `
     <div class="oc-head">
       <span class="oc-who" style="background:${PLAYER_INK[t.proposer]}"></span>
@@ -3524,15 +3554,40 @@ function renderOffers() {
     <div class="oc-row"><span class="oc-dir get">▼</span>${chips(t.give)}</div>
     <div class="oc-row"><span class="oc-dir put">▲</span>${chips(t.want)}
       <span class="oc-btns">
-        <button class="oc-b edit" title="この条件で対案を返す">✎</button>
-        <button class="oc-b no" title="断る">✗</button>
-        <button class="oc-b yes" title="受ける"${acc ? "" : " disabled"}>✓</button>
+        <button class="oc-b edit${chosen === "COUNTER_OFFER" ? " chosen" : ""}" title="この条件で対案を返す">✎</button>
+        <button class="oc-b no${chosen === "REJECT_TRADE" ? " chosen" : ""}" title="断る">✗</button>
+        <button class="oc-b yes${chosen === "ACCEPT_TRADE" ? " chosen" : ""}" title="受ける">✓</button>
       </span>
     </div>`;
   box.appendChild(card);
-  card.querySelector(".edit").addEventListener("click", () => { answerMode = true; render(); });
-  card.querySelector(".no").addEventListener("click", () => rej && play(rej.i));
-  card.querySelector(".yes").addEventListener("click", () => (acc ? play(acc.i) : toast("その条件は払えません")));
+
+  // 押した物を**その場で光らせる**。順番待ちの時は「預かった」印にもなる
+  //（押したのに何も起きないと、押せたのかどうか分からない）
+  const mark = (el) => {
+    card.querySelectorAll(".oc-b").forEach((b) => b.classList.remove("chosen"));
+    el.classList.add("chosen");
+    card.classList.add("answered");
+  };
+  const answer = (kind, el) => {
+    mark(el);
+    sfx.play(kind === "ACCEPT_TRADE" ? "offerYes" : "offerNope");
+    // まだ自分の番でなくても、押した物は預かる（描き直しても印が残る）
+    pendingAnswer = { seq: seqNow, kind };
+    const a2 = state.actions.find((x) => x.kind === kind);
+    if (a2) { pendingAnswer = null; play(a2.i); }
+  };
+  card.querySelector(".edit").addEventListener("click", (ev) => {
+    mark(ev.currentTarget);
+    answerMode = true;
+    render();
+  });
+  card.querySelector(".no").addEventListener("click", (ev) => answer("REJECT_TRADE", ev.currentTarget));
+  card.querySelector(".yes").addEventListener("click", (ev) => {
+    // 払えない条件は受けられない。押せてしまうと「押したのに進まない」になる
+    const payable = t.want.every((n, i) => (me0 && me0.hand ? me0.hand[i] >= n : true));
+    if (!payable) { toast("その条件は払えません"); return; }
+    answer("ACCEPT_TRADE", ev.currentTarget);
+  });
 }
 
 function renderPanel(box) {
@@ -4155,8 +4210,63 @@ function sfxWatch() {
     if (now.prompt === "DECIDE_TRADE" || now.prompt === "DECIDE_ACCEPTEES") sfx.play("offer");
   }
 
-  // 称号の移動。取った側も取られた側も同じ音（盤の上で起きたことは同じ）
-  if (now.army !== was.army || now.road !== was.road) sfx.play("award");
+  // 称号の移動。取った側も取られた側も同じ音（盤の上で起きたことは同じ）。
+  // 🔴 音だけでは誰が取ったのか分からない。**盤の中央に大きく出す** ──
+  //    称号は 2 点動く大事件なので、全員が同じ瞬間に気づく必要がある
+  if (now.army !== was.army) announceAward(now.army, "最大騎士力");
+  if (now.road !== was.road) announceAward(now.road, "最長交易路");
+
+  // 自分の番が回ってきたことを、音だけでなく**盤の中央**でも知らせる
+  if (mySeat >= 0 && now.turnPlayer !== was.turnPlayer && now.turnPlayer === mySeat) {
+    announce(
+      `<div class="an-dice">${dieFace(3)}${dieFace(5)}</div>
+       <div class="an-big">あなたの番</div>
+       <div class="an-sub">サイコロを振ってください</div>`,
+      "turn", 1700);
+  }
+}
+
+/** 称号を取った知らせ。誰も持っていない状態（null）になった時は出さない */
+function announceAward(pid, what) {
+  if (pid === null || pid === undefined) return;
+  sfx.play("award");
+  const who = pid === mySeat ? "あなた" : nameOf(pid);
+  announce(
+    `<div class="an-big" style="color:${PLAYER_INK[pid]}">${escapeHtml(who)}</div>
+     <div class="an-award">${what} を獲得！</div>`,
+    "award", 2400);
+}
+
+/** サイコロの目 1 つ（知らせの飾り用） */
+function dieFace(n) {
+  return `<span class="an-die">${pipCells(n)}</span>`;
+}
+
+/**
+ * 盤の中央に大きく出す知らせ。
+ *
+ * ログは流れていくので、**見落とすと取り返しがつかないもの**だけをここに出す。
+ * いまは 2 つだけ ── 自分の番が回ってきた／称号が動いた。
+ */
+let announceTimer = null;
+function announce(html, cls, ms) {
+  const stage = document.getElementById("stage");
+  if (!stage) return;
+  let box = document.getElementById("announce");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "announce";
+    stage.appendChild(box);
+  }
+  box.className = cls;
+  box.innerHTML = html;
+  box.hidden = false;
+  // 出し直しの時は動きを頭から掛け直す
+  box.style.animation = "none";
+  void box.offsetWidth;
+  box.style.animation = "";
+  clearTimeout(announceTimer);
+  announceTimer = setTimeout(() => { box.hidden = true; }, ms);
 }
 
 function render() {
