@@ -878,8 +878,9 @@ function drawHints(gHints) {
     if (a.node !== undefined && !seenNode.has(a.node)) {
       seenNode.add(a.node);
       const [x, y] = nodeXY(a.node);
-      const c = el("circle", { cx: x, cy: y, r: spotR, class: "spot" + (many ? " faint" : " pulse") }, gHints);
-      c.addEventListener("click", () => play(a.i));
+      const c = el("circle", { cx: x, cy: y, r: spotR,
+        class: "spot" + (many ? " faint" : " pulse") + (pendingBuild && pendingBuild.i === a.i ? " chosen" : "") }, gHints);
+      c.addEventListener("click", () => selectSpot(a));
       c.appendChild(title(a.label));
     } else if (a.edge !== undefined && !seenEdge.has(a.edge)) {
       seenEdge.add(a.edge);
@@ -888,9 +889,9 @@ function drawHints(gHints) {
       const l = el("line", {
         x1: e.x1 + (e.x2 - e.x1) * t, y1: e.y1 + (e.y2 - e.y1) * t,
         x2: e.x2 - (e.x2 - e.x1) * t, y2: e.y2 - (e.y2 - e.y1) * t,
-        class: "spot-edge pulse",
+        class: "spot-edge pulse" + (pendingBuild && pendingBuild.i === a.i ? " chosen" : ""),
       }, gHints);
-      l.addEventListener("click", () => play(a.i));
+      l.addEventListener("click", () => selectSpot(a));
       l.appendChild(title(a.label));
     } else if (a.tile !== undefined && !seenTile.has(a.tile)) {
       seenTile.add(a.tile);
@@ -1741,6 +1742,19 @@ function runAnimations() {
 
 let robberTile = null;
 
+/**
+ * 建てる場所を選んだところ。**押した瞬間には建てない**。
+ *
+ * 盗賊と同じで、押し間違いが戻せない操作には必ず一段挟む。
+ * 盤は広く、隣り合った頂点は近い ── 指がずれただけで
+ * 一番大事な資源の口を捨てることになる。
+ */
+let pendingBuild = null;
+function selectSpot(a) {
+  pendingBuild = { i: a.i, kind: a.kind, label: a.label, node: a.node, edge: a.edge };
+  render();
+}
+
 function selectTile(tile) {
   // どのヘクスでも必ず確認を挟む。
   // 誰も面していないヘクスでも、押した瞬間に確定すると押し間違いが戻せない。
@@ -2254,6 +2268,8 @@ function renderHand() {
           toast("同じ資源を両側には置けません");
           return;
         }
+        // 中身を決めたのだから「相手任せ」は下ろす
+        draft.open.give = false;
         draft.give[i]++;
         renderActions();
         renderHand();
@@ -2321,13 +2337,20 @@ const DEV_TEXT = [
   "伏せたまま 1 点になります。自動で数えられます。",
 ];
 /** 交易の下書き。give = 自分が出す枚数 / want = 欲しい枚数 */
-let draft = { give: [0, 0, 0, 0, 0], want: [0, 0, 0, 0, 0] };
+/**
+ * 交易の下書き。
+ * `open` は colonist の「?」の札 ── その段を**相手に決めてもらう**印。
+ * `open.want` = 「これを出すから、代わりは何でもいい」
+ * `open.give` = 「これが欲しい。そちらは何が要る？」
+ * 立てた側の枚数は必ず 0 にする（両方は立てられない ── 何も動かないため）。
+ */
+let draft = { give: [0, 0, 0, 0, 0], want: [0, 0, 0, 0, 0], open: { give: false, want: false } };
 /** どの提案に対する下書きか。場面が変わったら作り直す目印 */
 let draftKey = null;
 /** 自分の提案が流れたら、提案の画面に戻す（手の一覧まで戻さない） */
 let reopenOffer = false;
 function clearDraft() {
-  draft = { give: [0, 0, 0, 0, 0], want: [0, 0, 0, 0, 0] };
+  draft = { give: [0, 0, 0, 0, 0], want: [0, 0, 0, 0, 0], open: { give: false, want: false } };
   draftKey = null;
   clearBank();
   yop = [0, 0, 0, 0, 0];
@@ -2445,7 +2468,7 @@ function renderCounter(box) {
     const key = `${t.proposer}|${t.give}|${t.want}`;
     if (draftKey !== key) {
       draftKey = key;
-      draft = { give: t.want.map((n, i) => Math.min(n, hand[i])), want: t.give.slice() };
+      draft = { give: t.want.map((n, i) => Math.min(n, hand[i])), want: t.give.slice(), open: { give: false, want: false } };
     }
   }
   renderOfferComposer(box, "counter");
@@ -2463,20 +2486,33 @@ function renderOfferComposer(box, mode = "offer") {
 
   // 銀行と交換できる形か。出す枚数が各レートの倍数で、その回数だけもらう
   const times = RES.reduce((n, _, i) => n + (rate[i] ? draft.give[i] / rate[i] : 0), 0);
+  // 「?」が立っている段は空で送る（中身は相手に決めてもらう）
+  const openG = draft.open.give, openW = draft.open.want;
   const bankOk =
-    gTotal > 0 && wTotal > 0 &&
+    !openG && !openW && gTotal > 0 && wTotal > 0 &&
     RES.every((_, i) => draft.give[i] % rate[i] === 0) &&
     Number.isInteger(times) && wTotal === times;
-  const playersOk = gTotal > 0 && wTotal > 0;
+  // 片側が「?」なら、もう片側に中身があれば出せる。両方「?」は何も動かないので不可
+  const playersOk = openG
+    ? wTotal > 0
+    : openW
+    ? gTotal > 0
+    : gTotal > 0 && wTotal > 0;
 
   const sample = RES.map((r, i) =>
     `<div class="tsample ${r}" data-i="${i}" title="${RES_JA[r]} を「もらう」に足す">
        ${glyphHtml(r, 26)}</div>`).join("");
   const lane = (which) =>
-    RES.map((r, i) => draft[which][i] > 0
-      ? `<div class="lanecard ${r}" data-w="${which}" data-i="${i}" title="押すと 1 枚戻します">
-           ${glyphHtml(r, 22)}<span class="cnt">${draft[which][i]}</span></div>`
-      : "").join("");
+    draft.open[which]
+      ? `<div class="lanecard any" data-open="${which}"
+              title="この段は相手に決めてもらいます（押すと戻します）">?</div>`
+      : RES.map((r, i) => draft[which][i] > 0
+          ? `<div class="lanecard ${r}" data-w="${which}" data-i="${i}" title="押すと 1 枚戻します">
+               ${glyphHtml(r, 22)}<span class="cnt">${draft[which][i]}</span></div>`
+          : "").join("");
+  // 「?」の札。その段の中身を相手に決めてもらう（colonist と同じ）
+  const anyBtn = (which, tip) =>
+    `<button class="tc-any${draft.open[which] ? " on" : ""}" data-any="${which}" title="${tip}">?</button>`;
 
   const t0 = state.trade;
   box.innerHTML = `
@@ -2484,8 +2520,10 @@ function renderOfferComposer(box, mode = "offer") {
         <span class="oc-who" style="background:${PLAYER_INK[t0.proposer]}"></span>
         ${escapeHtml(nameOf(t0.proposer))} に返す条件</div>` : ""}
     <div class="tc-sample">${sample}</div>
-    <div class="tc-lane"><span class="tc-dir get">▼</span><div class="tc-cards">${lane("want")}</div></div>
-    <div class="tc-lane"><span class="tc-dir put">▲</span><div class="tc-cards">${lane("give")}</div></div>
+    <div class="tc-lane"><span class="tc-dir get">▼</span><div class="tc-cards">${lane("want")}</div>
+      ${anyBtn("want", "もらう物は相手に決めてもらう（何でもいい）")}</div>
+    <div class="tc-lane"><span class="tc-dir put">▲</span><div class="tc-cards">${lane("give")}</div>
+      ${anyBtn("give", "渡す物は相手に決めてもらう（何が要る？）")}</div>
     <div class="tc-foot">
       <button class="tc-ok bank"${counter ? " hidden" : bankOk ? "" : " disabled"} title="銀行・港と交易">
         <svg viewBox="0 0 24 24"><path d="M12 2 2 8h20zM4 10h3v8H4zm6.5 0h3v8h-3zM17 10h3v8h-3zM2 20h20v2H2z"/></svg>
@@ -2501,13 +2539,38 @@ function renderOfferComposer(box, mode = "offer") {
     c.addEventListener("click", () => {
       const i = +c.dataset.i;
       if (draft.give[i] > 0) { toast("同じ資源を両側には置けません"); return; }
+      // 中身を決めたのだから「相手任せ」は下ろす
+      draft.open.want = false;
       draft.want[i] = Math.min(19, draft.want[i] + 1);
       renderActions();
       renderHand();
     });
   });
+  // 「?」を入切する。立てた段の枚数は 0 に戻し、両方は立てない
+  box.querySelectorAll(".tc-any").forEach((b) => {
+    b.addEventListener("click", () => {
+      const w = b.dataset.any;
+      const other = w === "give" ? "want" : "give";
+      const on = !draft.open[w];
+      draft.open[w] = on;
+      if (on) {
+        draft[w] = [0, 0, 0, 0, 0];
+        // 両側とも相手任せでは何も動かない。反対側の「?」は下ろす
+        draft.open[other] = false;
+      }
+      renderActions();
+      renderHand();
+    });
+  });
   // 積んだカードを押す＝1 枚戻す
-  box.querySelectorAll(".lanecard").forEach((c) => {
+  box.querySelectorAll(".lanecard.any").forEach((c) => {
+    c.addEventListener("click", () => {
+      draft.open[c.dataset.open] = false;
+      renderActions();
+      renderHand();
+    });
+  });
+  box.querySelectorAll(".lanecard:not(.any)").forEach((c) => {
     c.addEventListener("click", () => {
       const w = c.dataset.w, i = +c.dataset.i;
       draft[w][i] = Math.max(0, draft[w][i] - 1);
@@ -2690,7 +2753,7 @@ function renderTradeComposer(box, mode) {
           if (net.on) {
             sfx.play("offer");
             netSend({ k: "alt", g: draft.give, w: draft.want });
-            draft = { give: [0, 0, 0, 0, 0], want: [0, 0, 0, 0, 0] };
+            draft = { give: [0, 0, 0, 0, 0], want: [0, 0, 0, 0, 0], open: { give: false, want: false } };
             render();
             return;
           }
@@ -2699,7 +2762,7 @@ function renderTradeComposer(box, mode) {
             // 積んだ後は空にする。元の条件に戻すと、次の候補を作るのに
             // わざわざ「−」で減らすところから始めることになる。
             // draftKey は残すので、提案の条件が入り直すこともない。
-            draft = { give: [0, 0, 0, 0, 0], want: [0, 0, 0, 0, 0] };
+            draft = { give: [0, 0, 0, 0, 0], want: [0, 0, 0, 0, 0], open: { give: false, want: false } };
             refreshState();
             render();
           }
@@ -3135,6 +3198,7 @@ function renderTradeAnswer(box) {
       draft = {
         give: t.want.map((n, i) => Math.min(n, hand[i])),
         want: t.give.slice(),
+        open: { give: false, want: false },
       };
     }
   }
@@ -3213,6 +3277,16 @@ function renderActions() {
     openMenu === "OFFER_TRADE" || openMenu === "MARITIME_TRADE" ||
     (state.prompt === "DECIDE_TRADE" && answerMode);
   abx.classList.toggle("over-hand", overHand);
+  // 🔴 下端は**手札の実寸から**決める。決め打ちの px にすると、
+  //    手札の高さが画面の大きさで変わったときに札の上に被る（実際に被った）
+  if (overHand && !abx.hidden) {
+    const h = document.getElementById("handbar");
+    const r = h ? h.getBoundingClientRect() : null;
+    if (r && r.height) abx.style.setProperty("--abx-bottom", `${Math.round(innerHeight - r.top + 8)}px`);
+    else abx.style.removeProperty("--abx-bottom");
+  } else {
+    abx.style.removeProperty("--abx-bottom");
+  }
 }
 
 /** 対案を組んでいる最中か。押されるまでは小さいカードだけ出す */
@@ -3225,8 +3299,16 @@ let answerMode = false;
  * 「いつのまにか全部断っていた／解除されていた」が一番困る。
  */
 const blockedTraders = new Set();
-/** 同じ提案を二重に自動で断らないための目印 */
-let autoRejectKey = null;
+/**
+ * 同じ問いかけに二重で答えないための目印。
+ *
+ * 🔴 **提案の中身を目印にしてはいけない**。同じ相手が同じ条件をまた出してきた時に
+ * 「もう断った」と誤認する。局面の通し番号（`state.last.seq`）なら、
+ * 別の提案は必ず別の番号になるので取り違えようが無い。
+ */
+let autoRejectSeq = null;
+/** いつ断ったか。返事が返るまでの間だけカードを出さないでおくのに使う */
+let autoRejectAt = 0;
 
 /** ブロックの入切を尋ねる小窓。プレイヤー欄の点数の隣に出す */
 function askBlock(pid, anchor) {
@@ -3268,25 +3350,26 @@ function renderOffers() {
   const t = state.trade;
   if (!t || state.prompt !== "DECIDE_TRADE") {
     answerMode = false;
-    // 🔴 問いかけが終わったら自動で断った記録も捨てる。
-    //    ここを残したままにすると、同じ相手が**同じ条件**をもう一度出してきた時に
-    //    「もう断った」と誤認して断らず、カードも出さないので**進行不能になる**（実際に踏んだ）。
-    autoRejectKey = null;
+    autoRejectSeq = null;
     return;
   }
 
   // 止めている相手の提案は、カードを出さずにそのまま断る
   if (blockedTraders.has(t.proposer)) {
-    const key = `${t.proposer}|${t.give}|${t.want}`;
     const rej = state.actions.find((a) => a.kind === "REJECT_TRADE");
-    if (rej && autoRejectKey !== key) {
-      autoRejectKey = key;
+    const seq = state.last ? state.last.seq : 0;
+    if (rej && autoRejectSeq !== seq) {
+      autoRejectSeq = seq;
+      autoRejectAt = Date.now();
       toast(`${nameOf(t.proposer)} の提案を自動で断りました`);
       play(rej.i);
       return;
     }
-    // 断れなかった時（同じ問いかけで 2 度目・断る手が無い）は**普通に出す**。
-    // 空のまま返すと、答えを待っているのに押す物が無い盤面になる
+    // もう断ってある。オンラインではサーバの返事が来るまで局面が動かないので、
+    // その間カードを出すと「止めたはずの相手の提案が出た」ように見える。少し待つ
+    if (autoRejectSeq === seq && Date.now() - autoRejectAt < 4000) return;
+    // 4 秒経っても動かない＝何か詰まっている。**押せる物を出す**。
+    // 空のまま返すと、答えを待っているのに押す物が無い盤面になる（実際に踏んだ）
   }
   if (answerMode) return;   // 対案を組んでいる間は下のパネルに任せる
 
@@ -3328,8 +3411,43 @@ function renderOffers() {
   card.querySelector(".yes").addEventListener("click", () => (acc ? play(acc.i) : toast("その条件は払えません")));
 }
 
+/** 選んだ場所を建てるかどうかの確認。盗賊と同じ形にそろえる */
+function renderBuildConfirm(box) {
+  const KIND_JA = {
+    BUILD_ROAD: "街道", SETUP_ROAD: "街道",
+    BUILD_SETTLEMENT: "開拓地", SETUP_SETTLEMENT: "開拓地",
+    BUILD_CITY: "都市", FREE_ROAD: "街道（無償）",
+  };
+  const what = KIND_JA[pendingBuild.kind] || "ここ";
+  box.innerHTML = `<div class="devconfirm">
+    <div class="dc-text"><b>${what}</b> をここに建てますか？</div>
+    <div class="dc-btns">
+      <button class="dc-no" title="選び直す">✗</button>
+      <button class="dc-yes" title="ここに建てる">✓</button>
+    </div></div>`;
+  box.querySelector(".dc-no").addEventListener("click", () => { pendingBuild = null; render(); });
+  box.querySelector(".dc-yes").addEventListener("click", () => {
+    const i = pendingBuild.i;
+    pendingBuild = null;
+    play(i);
+  });
+}
+
 function renderPanel(box) {
   box.innerHTML = "";
+
+  // 場所を選んだ直後。**建てる前に必ず一段挟む**（押し間違いは戻せない）。
+  // 局面が動いていたら選択は捨てる（同じ番号が別の手を指してしまう）
+  if (pendingBuild) {
+    const still = state.actions.some(
+      (a) => a.i === pendingBuild.i && a.node === pendingBuild.node && a.edge === pendingBuild.edge
+    );
+    if (!still || !isHumanTurn()) pendingBuild = null;
+  }
+  if (pendingBuild) {
+    renderBuildConfirm(box);
+    return;
+  }
 
   if (state.winner !== null) {
     box.innerHTML = `<div class="banner win">${escapeHtml(nameOf(state.winner))} の勝ち</div>`;
@@ -3812,10 +3930,27 @@ function bigRoll(a, b) {
 function renderDiceTray() {
   const tray = document.getElementById("dicetray");
   if (!tray) return;
+  bindDiceTray();
   if (!state.dice) { tray.hidden = true; return; }
   tray.hidden = false;
   document.getElementById("td0").innerHTML = pipCells(state.dice[0]);
   document.getElementById("td1").innerHTML = pipCells(state.dice[1]);
+  // ★ サイコロの絵そのものを押しても振れる。
+  //   下の帯のボタンまで目と指を移さずに済む（colonist も盤の上で振れる）
+  const roll = state.actions.find((a) => a.kind === "ROLL");
+  tray.classList.toggle("rollable", !!roll && isHumanTurn());
+  tray.title = roll ? "押すとサイコロを振ります" : "";
+}
+// 目の絵を押して振る。描き直しのたびに付け直さなくて済むよう、一度だけ結ぶ
+function bindDiceTray() {
+  const tray = document.getElementById("dicetray");
+  if (!tray || tray.dataset.bound) return;
+  tray.dataset.bound = "1";
+  tray.addEventListener("click", () => {
+    if (!state || !state.actions) return;
+    const roll = state.actions.find((a) => a.kind === "ROLL");
+    if (roll && isHumanTurn()) play(roll.i);
+  });
 }
 
 function renderDice() {
@@ -3948,6 +4083,7 @@ function play(i) {
   if (net.on) {
     robberTile = null;
     pickKind = null;
+    pendingBuild = null;
     openMenu = null;
     reopenOffer = false;
     clearDraft();
@@ -3957,6 +4093,7 @@ function play(i) {
   }
   robberTile = null;
   pickKind = null;
+  pendingBuild = null;
   openMenu = null;
   // 自分で手を指したなら、提案の画面へ戻す必要はない
   // （成立・取り下げ・手番終了のどれであっても、その意思で先へ進んでいる）
@@ -4631,7 +4768,29 @@ function setDrawer(open) {
     placeDrawer();
   }
 }
-addEventListener("resize", () => { placeBankPanel(); placeDrawer(); });
+/**
+ * 画面の大きさに合わせて**画面ぜんぶを拡大縮小する**。
+ *
+ * 盤は SVG なので勝手に伸び縮みするが、レール・右の欄・手札・操作ボタンは
+ * px で決め打ちしてある。そのままだと窓を小さくした時に盤だけ縮んで、
+ * 周りが場所を食い潰す（実際にそうなっていた）。
+ *
+ * 一つずつ相対値に直すより、**まとめて `zoom` を掛ける**方が破綻しない。
+ * `zoom` は `transform: scale` と違って場所の計算にも効くので、
+ * 盤の当たり判定（`getScreenCTM`）もそのまま正しく動く。
+ *
+ * 基準は 1280x720。それより大きい画面では 1 を超えて拡げる（上限 1.6）。
+ */
+function fitUi() {
+  const app = document.getElementById("app");
+  // 窓の大きさが取れない時（描画されていない・隠れている）は触らない。
+  // 0 を掛けて画面を潰してしまう
+  if (!app || innerWidth < 200 || innerHeight < 200) return;
+  const s = Math.min(innerWidth / 1280, innerHeight / 720);
+  app.style.zoom = String(Math.max(0.6, Math.min(1.6, s)));
+}
+addEventListener("resize", () => { fitUi(); placeBankPanel(); placeDrawer(); render(); });
+fitUi();
 // 上の帯は普段は畳んでおく。盤を広く使いたいので、既定では出さない
 document.getElementById("uitoggle").addEventListener("click", (ev) => {
   const h = document.querySelector("header");

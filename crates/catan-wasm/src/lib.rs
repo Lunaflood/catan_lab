@@ -591,8 +591,9 @@ pub extern "C" fn discard_custom(d0: u32, d1: u32, d2: u32, d3: u32, d4: u32) ->
 fn bundles_are_tradable(g: &Game, p: PlayerId, give: &Bundle, want: &Bundle) -> bool {
     let hand = g.players[p as usize].hand;
     let total = |b: &Bundle| b.iter().map(|&n| n as u32).sum::<u32>();
-    total(give) > 0
-        && total(want) > 0
+    // 片側が空でもよい ── colonist の「?」の札（中身は相手に決めてもらう）。
+    // 両側とも空は何も動かないので不可
+    (total(give) > 0 || total(want) > 0)
         && (0..5).all(|i| give[i] <= hand[i])
         // 同種を両側に置くと「ただで貰う」形になるので禁止
         && (0..5).all(|i| give[i] == 0 || want[i] == 0)

@@ -799,3 +799,108 @@ fn 提案の生成は絞られていない() {
     assert!(kinds.iter().any(|g| g[WOOD] > 0), "木を出す提案が無い");
     assert!(kinds.iter().any(|g| g[BRICK] > 0), "土を出す提案が無い");
 }
+
+/// 1 手番に持ちかけられる回数には上限がある。
+/// 区切らないと CPU が断られるたびに別の条件を作り、人は答えるだけで手番が終わる。
+#[test]
+fn 提案は一手番の回数で打ち切られる() {
+    let mut cfg = GameConfig::default();
+    cfg.max_offers_per_turn = 2;
+    let mut g = ready(cfg);
+    set_hand(&mut g, 0, [3, 3, 0, 0, 0]);
+    set_hand(&mut g, 1, [0, 0, 3, 0, 0]);
+
+    let has_offer = |g: &Game| g.legal_actions().iter().any(|a| matches!(a, Action::OfferTrade { .. }));
+    assert!(has_offer(&g), "はじめは提案できる");
+
+    // 1 回目
+    g.apply(Action::OfferTrade { give: [1, 0, 0, 0, 0], want: [0, 0, 1, 0, 0] });
+    while g.prompt == Prompt::DecideTrade {
+        g.apply(Action::RejectTrade);
+    }
+    if g.prompt == Prompt::DecideAcceptees {
+        g.apply(Action::CancelTrade);
+    }
+    assert!(has_offer(&g), "2 回目はまだ出せる");
+
+    // 2 回目
+    g.apply(Action::OfferTrade { give: [0, 1, 0, 0, 0], want: [0, 0, 1, 0, 0] });
+    while g.prompt == Prompt::DecideTrade {
+        g.apply(Action::RejectTrade);
+    }
+    if g.prompt == Prompt::DecideAcceptees {
+        g.apply(Action::CancelTrade);
+    }
+    assert!(!has_offer(&g), "上限に達したら、もう提案は作られない");
+
+    // 手番が変われば元に戻る
+    g.apply(Action::EndTurn);
+    while g.turn_player != 0 {
+        let acts = g.legal_actions();
+        let end = acts.iter().find(|a| matches!(a, Action::EndTurn)).copied();
+        match end {
+            Some(a) => {
+                g.apply(a);
+            }
+            None => {
+                g.apply(acts[0]);
+            }
+        }
+    }
+    assert_eq!(g.offers_this_turn, 0, "手番が一周したら回数は戻る");
+}
+
+/// 「?」の札 ── 片側を空にした「相談」の提案。
+/// 「木を出すから何かくれ」／「木が欲しい、代わりは何がいい？」の形。
+/// そのまま承諾はできず、対案でしか答えられない。
+#[test]
+fn 片側が空の相談は対案でしか答えられない() {
+    let mut g = ready(GameConfig::default());
+    set_hand(&mut g, 0, [3, 0, 0, 0, 0]); // P0: 木3
+    set_hand(&mut g, 1, [0, 2, 0, 0, 0]); // P1: 土2
+
+    // 「木1 を出す。代わりは何でもいい」
+    g.apply(Action::OfferTrade {
+        give: [1, 0, 0, 0, 0],
+        want: [0, 0, 0, 0, 0],
+    });
+    assert_eq!(g.prompt, Prompt::DecideTrade);
+    let acts = g.legal_actions();
+    assert!(
+        !acts.iter().any(|a| matches!(a, Action::AcceptTrade)),
+        "相談をそのまま受けられてはいけない（ただの贈与になる）"
+    );
+    assert!(acts.iter().any(|a| matches!(a, Action::RejectTrade)), "断ることはできる");
+
+    // 対案で中身を埋めれば成立する
+    g.apply(Action::CounterOffer {
+        give: [0, 1, 0, 0, 0],
+        want: [1, 0, 0, 0, 0],
+    });
+    while g.prompt == Prompt::DecideTrade {
+        g.apply(Action::RejectTrade);
+    }
+    assert_eq!(g.prompt, Prompt::DecideAcceptees);
+    let pick = g
+        .legal_actions()
+        .into_iter()
+        .find(|a| matches!(a, Action::AcceptCounter { .. }))
+        .expect("対案を受ける手がある");
+    g.apply(pick);
+    assert_eq!(g.players[0].hand[WOOD], 2, "木を 1 枚出した");
+    assert_eq!(g.players[0].hand[BRICK], 1, "土を 1 枚もらった");
+}
+
+/// 逆向きの相談。「木が欲しい。そちらは何が要る？」
+#[test]
+fn 欲しい物だけの相談も出せる() {
+    let mut g = ready(GameConfig::default());
+    set_hand(&mut g, 0, [0, 3, 0, 0, 0]);
+    set_hand(&mut g, 1, [2, 0, 0, 0, 0]);
+    g.apply(Action::OfferTrade {
+        give: [0, 0, 0, 0, 0],
+        want: [1, 0, 0, 0, 0],
+    });
+    assert_eq!(g.prompt, Prompt::DecideTrade);
+    assert!(!g.legal_actions().iter().any(|a| matches!(a, Action::AcceptTrade)));
+}

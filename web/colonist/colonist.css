@@ -681,7 +681,7 @@ header { display: none !important; }
 /* ---------------------------------------------------------------- 銀行 */
 
 /* 山の厚みで残量を見せる。box-shadow を層にして重なりを作っている（JS 側で生成） */
-#app #bankpanel { display: flex; gap: 12px; padding: 12px 10px 8px !important; }
+#app #bankpanel { display: flex; gap: 7px; padding: 10px 8px 8px !important; }
 #app #bankpanel .bpcard {
   position: relative; width: 40px; height: 54px; border-radius: 4px;
   display: grid; place-items: center; flex: 0 0 auto;
@@ -947,8 +947,9 @@ header { display: none !important; }
 #app #actionbox {
   left: auto !important;
   right: 12px !important;
-  /* 操作ボタンは 100px（低い画面で 92px）＋下の余白 6px。その上に置く */
-  bottom: 112px !important;
+  /* 操作ボタンは 100px（低い画面で 92px）＋下の余白 6px。その上に置く。
+     🔴 inline style は `!important` に勝てないので、JS からは変数で入れる */
+  bottom: var(--abx-bottom, 112px) !important;
   max-width: calc(100% - 24px);
 }
 
@@ -1000,25 +1001,28 @@ header { display: none !important; }
 #app #bankpanel { align-items: flex-end; }
 #app #bankpanel .bpstack {
   position: relative; flex: 0 0 auto;
-  /* 重なりの分だけ場所を空ける（--n は出ている札の枚数） */
-  width: calc(40px + (var(--n) - 1) * 5px);
-  height: calc(54px + (var(--n) - 1) * 5px);
+  /* 重なりの分だけ場所を空ける（--n は出ている札の枚数）。
+     🔴 6 種ぶんが右の欄（361px）に収まる寸法にすること。
+     広げすぎて発展カードが見切れた */
+  width: calc(36px + (var(--n) - 1) * 4px);
+  height: calc(50px + (var(--n) - 1) * 4px);
 }
 #app #bankpanel .bpstack.empty { opacity: .28; }
 /* 後ろに重なる札。手前ほど下・右に来る */
 #app #bankpanel .bps {
   position: absolute; display: block;
-  width: 40px; height: 54px; border-radius: 4px;
-  left: calc((var(--n) - 1 - var(--k)) * 5px);
-  top:  calc((var(--n) - 1 - var(--k)) * 5px);
+  width: 36px; height: 50px; border-radius: 4px;
+  left: calc((var(--n) - 1 - var(--k)) * 4px);
+  top:  calc((var(--n) - 1 - var(--k)) * 4px);
   border: 1px solid rgba(255,255,255,.22);
   box-shadow: 0 1px 3px rgba(0,0,0,.35);
 }
 /* 一番手前の 1 枚だけが絵を持つ */
 #app #bankpanel .bpstack .bpcard {
   position: absolute; left: 0; top: 0; margin: 0;
-  width: 40px; height: 54px;
+  width: 36px; height: 50px;
 }
+#app #bankpanel .bpstack .bpcard svg { width: 22px; height: 22px; }
 #app #bankpanel .bpstack.empty .bpcard { filter: grayscale(1); }
 
 /* 手札を選ぶ場面（捨て札・交易）は、パネルを**手札の真上**に出す。
@@ -1058,3 +1062,47 @@ header { display: none !important; }
    名前の左右に僅かな余白を置く（色だけでは切れ目が読み取れない） */
 #app #loglines .line .txt > b:first-child { margin-right: .3em; }
 #app .pname-in { padding: 0 .12em; }
+
+/* サイコロの絵そのものが押せる時は、押せると分かる見た目にする */
+#app #dicetray.rollable { cursor: pointer; }
+#app #dicetray.rollable .tdie {
+  box-shadow: 0 4px 12px rgba(0,0,0,.3), 0 0 0 3px rgba(255,255,255,.55);
+  transition: transform var(--t-press), box-shadow var(--t-press);
+}
+#app #dicetray.rollable:hover .tdie { transform: translateY(-3px); }
+#app #dicetray.rollable:active .tdie { transform: scale(.95); }
+
+/* ---------------------------------------------------------------- 「?」の札
+   その段の中身を**相手に決めてもらう**印（colonist と同じ）。
+   「木を出すから何かくれ」「木が欲しい、そちらは何が要る？」の形が作れる。 */
+#app #actionbox .tc-lane { position: relative; }
+#app #actionbox .tc-any {
+  margin-left: auto; flex: 0 0 auto;
+  width: 34px; height: 44px; border-radius: 5px; padding: 0; cursor: pointer;
+  display: grid; place-items: center; line-height: 1;
+  font-size: 20px; font-weight: 800; color: #17313f;
+  border: 2px dashed #7fa8c6; background: rgba(255,255,255,.45);
+  transition: transform var(--t-press), filter var(--t-press);
+}
+#app #actionbox .tc-any:hover { filter: brightness(1.06); }
+#app #actionbox .tc-any:active { transform: scale(.94); }
+#app #actionbox .tc-any.on {
+  border-style: solid; color: #fff;
+  background: linear-gradient(#5a86b8, #33608f);
+}
+/* 段に置かれた「?」。資源の札と同じ大きさで、地色だけ伏せ札にする */
+#app #actionbox .lanecard.any {
+  display: grid; place-items: center; cursor: pointer;
+  font-size: 22px; font-weight: 800; color: #dbe7f2;
+  background: linear-gradient(#3b4a5c, #232e3b) !important;
+  border: 1px dashed rgba(255,255,255,.45);
+}
+
+/* 建てる場所として選んだところ。確認を待っている間、どこを選んだか見せる */
+#app #board .spot.chosen {
+  fill: #ffd15e; stroke: #17313f; stroke-width: 3; r: 13;
+  animation: none;
+}
+#app #board .spot-edge.chosen {
+  stroke: #ffd15e; stroke-width: 11; animation: none;
+}

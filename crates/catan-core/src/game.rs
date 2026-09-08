@@ -126,6 +126,10 @@ pub struct GameConfig {
     /// `legal_actions` が返す廃棄候補の上限。超える場合は代表例に間引く。
     /// `apply` は上限に関係なく任意の合法な廃棄を受け付ける。
     pub max_discard_actions: usize,
+    /// 1 手番に同じ人が持ちかけられる交易の回数。
+    /// 断られた条件は出し直せないので延々とは続かないが、それでも
+    /// 形は 120 通りあるので、区切らないと人が答えるだけで手番が終わる
+    pub max_offers_per_turn: u8,
     /// 提案の諾否を**最後に回す席**（ビットで指定。bit0 = 席0）。
     ///
     /// ここに入れた席は、他の全員が答え終わってから聞かれる。
@@ -161,6 +165,7 @@ impl Default for GameConfig {
             max_generated_offers: 200,
             wide_offers: true,
             max_discard_actions: 64,
+            max_offers_per_turn: 3,
             answer_last_mask: 0,
             turn_time_limit_ms: Some(2 * 60 * 1000),
             // 既定は決定的な仮想時計。2 分 ÷ 500ms = 1 手番あたり 240 行動ぶんの
@@ -206,7 +211,8 @@ pub struct Game {
     pub rolled: bool,
     pub dev_played_this_turn: bool,
     pub free_roads: u8,
-    /// この手番で既に出した交易提案の回数（統計用。手を制限はしない）
+    /// この手番で既に出した交易提案の回数。
+    /// [`GameConfig::max_offers_per_turn`] に達したら、その手番はもう提案を作らない
     pub offers_this_turn: u8,
     /// この手番で**断られた**提案。同じものを出し直せないようにする。
     ///
@@ -472,8 +478,10 @@ impl Game {
             Prompt::DecideTrade => {
                 let t = self.trade.expect("交易中でないのに DecideTrade");
                 out.push(Action::RejectTrade);
-                // 求められている資源を持っている時だけ承諾できる
-                if bundle_contains(&ps.hand, &t.want) {
+                // 求められている資源を持っている時だけ承諾できる。
+                // 🔴 片側が空の「相談」は、そのまま受けると**ただの贈与**になる。
+                // 中身を決めるのは対案の仕事なので、承諾は出さない
+                if !Self::offer_is_open(&t.give, &t.want) && bundle_contains(&ps.hand, &t.want) {
                     out.push(Action::AcceptTrade);
                 }
                 // 対案。時間切れなら出せない
@@ -560,9 +568,13 @@ impl Game {
                     }
                 }
 
-                // 国内交易の提案（代表的なものだけ自動生成する）
+                // 国内交易の提案（代表的なものだけ自動生成する）。
+                // 🔴 **1 手番に出せる回数を区切る**。区切らないと CPU は断られるたびに
+                // 別の条件を作って延々と提案し続け、人は答えるだけで手番が終わる。
+                // 回数は「何度か持ちかけて駄目なら諦める」人の感覚に合わせる
                 if self.cfg.domestic_trade
                     && self.cfg.max_generated_offers > 0
+                    && self.offers_this_turn < self.cfg.max_offers_per_turn
                     && self.negotiation_open()
                 {
                     self.gen_offers(p, out, false);
@@ -766,6 +778,12 @@ impl Game {
     }
 
     /// その条件は、この手番で既に断られているか
+    /// 片側が空の「相談」の提案か（colonist の「?」の札）。
+    /// この形はそのまま承諾できず、対案で中身を埋めてもらう
+    pub fn offer_is_open(give: &Bundle, want: &Bundle) -> bool {
+        bundle_total(give) == 0 || bundle_total(want) == 0
+    }
+
     pub fn offer_was_rejected(&self, give: &Bundle, want: &Bundle) -> bool {
         match canonical_offer_index(give, want) {
             Some(i) => self.rejected_offers[(i / 128) as usize] & (1u128 << (i % 128)) != 0,
@@ -780,14 +798,19 @@ impl Game {
     }
 
     /// 交易の提案・対案として成立しうる形か。公式の禁止事項を検査する。
+    ///
+    /// **片側が空の提案は「相談」**として認める（colonist の「?」の札）。
+    /// 「木を出すから何かくれ」「木が欲しい、代わりは何がいい？」の形で、
+    /// 受けた側は対案でしか答えられない（[`Game::offer_is_open`] を見よ）。
+    /// 両側とも空は、何も動かないので認めない。
     fn validate_offer(&self, from: PlayerId, give: &Bundle, want: &Bundle) {
         assert!(
             bundle_contains(&self.players[from as usize].hand, give),
             "持っていない資源を出そうとした"
         );
         assert!(
-            bundle_total(give) > 0 && bundle_total(want) > 0,
-            "一方的な譲渡はできない"
+            bundle_total(give) > 0 || bundle_total(want) > 0,
+            "両側とも空では何も動かない"
         );
         assert!(
             (0..NUM_RESOURCES).all(|i| give[i] == 0 || want[i] == 0),
@@ -878,8 +901,8 @@ impl Game {
             }
             Action::OfferTrade { give, want } | Action::CounterOffer { give, want }
             | Action::CounterAlt { give, want } => {
-                let ok_shape = bundle_total(give) > 0
-                    && bundle_total(want) > 0
+                // 片側が空でもよい（「相談」の提案）。両側とも空は不可
+                let ok_shape = (bundle_total(give) > 0 || bundle_total(want) > 0)
                     && (0..NUM_RESOURCES).all(|i| give[i] == 0 || want[i] == 0)
                     && bundle_contains(&self.players[self.to_act as usize].hand, give);
                 if !ok_shape || !self.negotiation_open() {
