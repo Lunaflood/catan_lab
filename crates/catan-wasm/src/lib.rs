@@ -1387,7 +1387,9 @@ fn note(
         (Action::Roll, Outcome::Dice(x, y)) => {
             sess.last_dice = Some((x, y));
             sess.rolls[(x + y) as usize] += 1;
-            format!("サイコロ {x}+{y}={}", x + y)
+            // 出目は**合計だけ**。式を書いても読む物が増えるだけで、
+            // 盤で使うのは合計の数字だけ（内訳はサイコロの絵が見せている）
+            format!("サイコロ {}", x + y)
         }
         (Action::MoveRobber { tile, victim }, Outcome::Stole(st)) => {
             last.tile = Some(tile);
