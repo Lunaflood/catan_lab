@@ -3426,6 +3426,28 @@ function placeBand() {
 let answerMode = false;
 
 /**
+ * いま**自分が**提案の返事を聞かれているか。
+ *
+ * 🔴 `state.actions` は「いま聞かれている人」の手の一覧なので、
+ * 自分の番かどうかを確かめずに使うと、他人の手の番号を送ってしまう。
+ */
+function myTurnToAnswer() {
+  return state.prompt === "DECIDE_TRADE" && state.toAct === mySeat;
+}
+
+/**
+ * 預かった答えを、送れるようになった瞬間に送る。
+ *
+ * 描き直しの合間に自分の番が過ぎることがあるので、描画に頼らず自分で見張る。
+ */
+setInterval(() => {
+  if (!pendingAnswer || pendingAnswer.sent || !state || !state.actions) return;
+  if (!myTurnToAnswer()) return;
+  const a = state.actions.find((x) => x.kind === pendingAnswer.kind);
+  if (a) { pendingAnswer.sent = true; play(a.i); }
+}, 140);
+
+/**
  * 提案を自動で断る相手。
  * 毎回 ✗ を押すのが手間な相手を止めておける（colonist にも同じ仕組みがある）。
  * 対局の間だけ覚える。⚠ 切り替えは必ず確認を挟む ── 押し間違いで
@@ -3520,7 +3542,7 @@ function renderOffers() {
   //    同じ提案かどうかは、提案そのもの（誰の・何と何）で見る。
   const tradeKey = JSON.stringify([t.proposer, t.give, t.want]);
   if (pendingAnswer && pendingAnswer.key !== tradeKey) pendingAnswer = null;
-  if (pendingAnswer && !pendingAnswer.sent) {
+  if (pendingAnswer && !pendingAnswer.sent && myTurnToAnswer()) {
     const a2 = state.actions.find((x) => x.kind === pendingAnswer.kind);
     if (a2) { pendingAnswer.sent = true; play(a2.i); return; }
   }
@@ -3653,6 +3675,10 @@ function renderOffers() {
     //    送った瞬間に消すと、返事が届くまでの間だけ押していない見た目になり、
     //    「押しても反応しない」ように見える（オンラインでは往復ぶん空く）。
     pendingAnswer = { key: tradeKey, kind, sent: false };
+    // 🔴 自分の番でないなら**送らない**。`state.actions` は
+    //    「いま聞かれている人」の手なので、他人の手の番号で送ってしまい、
+    //    サーバに弾かれたうえ「送信ずみ」になって二度と送られなくなる。
+    if (!myTurnToAnswer()) return;
     const a2 = state.actions.find((x) => x.kind === kind);
     if (a2) { pendingAnswer.sent = true; play(a2.i); }
   };
