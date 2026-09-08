@@ -1168,3 +1168,39 @@ header { display: none !important; }
   min-width: 44px; min-height: 44px;
 }
 #app #actionbox .tc-ok svg { display: block; width: 24px !important; height: 24px !important; }
+
+/* ---------------------------------------------------------------- 設定の引き出し
+   レールの歯車から開く。対局中に要る「離れる・やり直す・音」を 1 か所に集める。 */
+#app #settingsbox {
+  position: fixed; z-index: 60; width: 244px;
+  background: linear-gradient(var(--c-panel-a), var(--c-panel-b));
+  border-radius: var(--c-radius); color: var(--c-ink-dark);
+  padding: 12px 13px 11px; box-shadow: 0 12px 32px rgba(0,0,0,.4);
+}
+#app #settingsbox .sb-title {
+  font-size: 15px; font-weight: 800; margin-bottom: 10px;
+}
+#app #settingsbox .sb-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px;
+}
+#app #settingsbox .sb-label { flex: 0 0 46px; font-weight: 700; }
+#app #settingsbox .sb-val { flex: 0 0 40px; text-align: right; font-variant-numeric: tabular-nums; }
+#app #settingsbox .sb-range { flex: 1 1 auto; min-width: 0; accent-color: #2a7fbf; }
+#app #settingsbox .sb-range:disabled { opacity: .4; }
+#app #settingsbox .sb-toggle {
+  margin-left: auto; padding: 5px 12px; border-radius: 7px; cursor: pointer;
+  font-size: 12.5px; font-weight: 700; color: #17313f;
+  border: 2px solid #7fa8c6; background: linear-gradient(#cfe4f2, #a9c9e0);
+}
+#app #settingsbox .sb-toggle.off { color: #a3452f; border-color: #c99a8c; background: linear-gradient(#f2dcd6, #e0bdb2); }
+#app #settingsbox .sb-sep { height: 1px; background: rgba(0,0,0,.14); margin: 10px 0; }
+#app #settingsbox .sb-item {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  padding: 9px 11px; margin-bottom: 6px; border-radius: 8px;
+  font-size: 13.5px; font-weight: 700; color: #17313f;
+  border: 2px solid #7fa8c6; background: linear-gradient(#cfe4f2, #a9c9e0);
+}
+#app #settingsbox .sb-item:hover { filter: brightness(1.06); }
+#app #settingsbox .sb-item:active { transform: scale(.985); }
+#app #settingsbox .sb-note { font-size: 11px; color: #5b6b78; line-height: 1.5; }
+#app #rail .railbtn.on { background: rgba(255,255,255,.3); }

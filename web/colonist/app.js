@@ -5081,6 +5081,135 @@ document.getElementById("disttoggle").addEventListener("click", (ev) => {
   });
 }
 
+/* ---------------------------------------------------------------- 設定の引き出し
+
+   左のレールの歯車から開く。対局中に要る「離れる・やり直す・音」を 1 か所に集める。
+   ⚠ 取り返しのつかないもの（待機所へ戻る・新しい対局）は**確認を挟む**。
+   間違って押したら、それまでの対局が消える。 */
+{
+  const btn = document.getElementById("r-settings");
+  let box = null;
+
+  const close = () => {
+    if (box) { box.remove(); box = null; }
+    btn.classList.remove("on");
+  };
+
+  const open = () => {
+    box = document.createElement("div");
+    box.id = "settingsbox";
+    box.innerHTML = `
+      <div class="sb-title">設定</div>
+
+      <div class="sb-row">
+        <span class="sb-label">効果音</span>
+        <button class="sb-toggle" id="sb-mute"></button>
+      </div>
+      <div class="sb-row">
+        <span class="sb-label">音量</span>
+        <input class="sb-range" id="sb-vol" type="range" min="0" max="100" step="5">
+        <span class="sb-val" id="sb-volv"></span>
+      </div>
+
+      <div class="sb-sep"></div>
+
+      <button class="sb-item" id="sb-new">この面子でもう一度</button>
+      <button class="sb-item" id="sb-home">待機所に戻る</button>
+      <div class="sb-note">戻ると、いまの対局は終わります</div>
+
+      <div class="sb-sep"></div>
+      <div class="sb-note">${BUILD}</div>`;
+    document.getElementById("app").appendChild(box);
+    const r = btn.getBoundingClientRect();
+    const z = parseFloat(getComputedStyle(document.getElementById("app")).zoom) || 1;
+    box.style.left = `${Math.round(r.right / z + 8)}px`;
+    box.style.top = `${Math.round(Math.min(r.top / z, (innerHeight || 1e6) / z - box.offsetHeight - 8))}px`;
+    btn.classList.add("on");
+
+    const mute = box.querySelector("#sb-mute");
+    const vol = box.querySelector("#sb-vol");
+    const volv = box.querySelector("#sb-volv");
+    const paint = () => {
+      mute.textContent = sfx.isMuted() ? "消音中" : "鳴らす";
+      mute.classList.toggle("off", sfx.isMuted());
+      vol.value = String(Math.round(sfx.getVolume() * 100));
+      volv.textContent = `${vol.value}%`;
+      vol.disabled = sfx.isMuted();
+    };
+    paint();
+    mute.addEventListener("click", () => {
+      sfx.setMuted(!sfx.isMuted());
+      paint();
+      if (!sfx.isMuted()) sfx.play("offer");
+      syncSfxButton();
+    });
+    vol.addEventListener("input", () => {
+      sfx.setVolume(vol.value / 100);
+      volv.textContent = `${vol.value}%`;
+    });
+    // 離した時に一度だけ鳴らして、いまの大きさを耳で確かめられるようにする
+    vol.addEventListener("change", () => sfx.play("click"));
+
+    box.querySelector("#sb-new").addEventListener("click", () => {
+      close();
+      askConfirm("この面子でもう一度始めますか？", "いまの対局は終わります", () => {
+        watching = false;
+        newGame(true);
+      });
+    });
+    box.querySelector("#sb-home").addEventListener("click", () => {
+      close();
+      askConfirm("待機所に戻りますか？", "いまの対局は終わります", () => {
+        // サーバには「抜ける」口が無い。取りに行くのをやめれば、
+        // 一定時間で居ないものとして扱われる
+        if (net.on) netLeave();
+        showHome();
+      });
+    });
+  };
+
+  btn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (box) close(); else open();
+  });
+  // 外を押したら閉じる（引き出しの中は除く）
+  document.addEventListener("click", (ev) => {
+    if (!box) return;
+    if (box.contains(ev.target) || btn.contains(ev.target)) return;
+    close();
+  });
+}
+
+/** レールの音アイコンを、いまの状態に合わせ直す */
+function syncSfxButton() {
+  const b = document.getElementById("sfxtoggle");
+  if (!b) return;
+  b.classList.toggle("off", sfx.isMuted());
+  b.title = sfx.isMuted() ? "効果音を鳴らす" : "効果音を消す";
+}
+
+/**
+ * 取り返しのつかない操作の確認。ブロックの小窓と同じ形で画面の中央に出す。
+ * 「いまの対局が消える」ものは、必ずここを通す。
+ */
+function askConfirm(text, note, onYes) {
+  const box = document.getElementById("askbox");
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="ask-text"><b>${escapeHtml(text)}</b><br>${escapeHtml(note || "")}</div>
+    <div class="ask-btns">
+      <button class="ask-no">やめる</button>
+      <button class="ask-yes">はい</button>
+    </div>`;
+  const z = parseFloat(getComputedStyle(document.getElementById("app")).zoom) || 1;
+  const vw = (innerWidth || 1e6) / z, vh = (innerHeight || 1e6) / z;
+  box.style.left = `${Math.round(Math.max(8, vw / 2 - box.offsetWidth / 2))}px`;
+  box.style.top = `${Math.round(Math.max(8, vh / 2 - box.offsetHeight / 2))}px`;
+  const shut = () => { box.hidden = true; box.innerHTML = ""; };
+  box.querySelector(".ask-no").addEventListener("click", shut);
+  box.querySelector(".ask-yes").addEventListener("click", () => { shut(); onYes(); });
+}
+
 document.getElementById("logmore").addEventListener("click", () => setDrawer(true));
 document.getElementById("drawerclose").addEventListener("click", () => setDrawer(false));
 

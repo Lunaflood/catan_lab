@@ -14,11 +14,20 @@ let ctx = null;
 let master = null;
 let noiseBuf = null;
 let muted = false;
+/** 音量 0〜1。掛け算の元は 0.5（これまでの既定の大きさ） */
+let volume = 1;
 
 try {
   muted = localStorage.getItem("catan.mute") === "1";
+  const v = parseFloat(localStorage.getItem("catan.vol"));
+  if (Number.isFinite(v)) volume = Math.max(0, Math.min(1, v));
 } catch {
   // プライベートウィンドウなどで読めないことがある。既定（鳴らす）のままでよい
+}
+
+/** 実際に master へ入れる大きさ。消音なら 0 */
+function level() {
+  return muted ? 0 : 0.5 * volume;
 }
 
 function ac() {
@@ -28,7 +37,7 @@ function ac() {
     if (!AC) return null;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = 0.5;
+    master.gain.value = level();
     master.connect(ctx.destination);
   }
   if (ctx.state === "suspended") ctx.resume();
@@ -288,6 +297,20 @@ export function setMuted(v) {
   } catch {
     // 覚えられなくても、この対局の間は効く
   }
-  if (muted && ctx) master.gain.value = 0;
-  else if (master) master.gain.value = 0.5;
+  if (master) master.gain.value = level();
+}
+
+export function getVolume() {
+  return volume;
+}
+
+/** 音量を変える（0〜1）。0 にしても消音の入切とは別に覚える */
+export function setVolume(v) {
+  volume = Math.max(0, Math.min(1, Number(v) || 0));
+  try {
+    localStorage.setItem("catan.vol", String(volume));
+  } catch {
+    // 覚えられなくても、この対局の間は効く
+  }
+  if (master) master.gain.value = level();
 }
