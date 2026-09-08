@@ -587,7 +587,8 @@ header { display: none !important; }
 #app .DEV   { background: linear-gradient(#6a52b0, #35275f) !important; }
 
 /* 枚数のバッジは全部同じ形（左下だけ大きく丸い） */
-#app .ucard b, #app .lanecard .cnt, #app .traycard .cnt, #app #handbar .hcard .hn {
+#app .ucard b, #app .lanecard .cnt, #app .traycard .cnt,
+#app #handbar .hcard .hn, #app #handbar .hdev .hn {
   position: absolute; right: -3px; top: -3px;
   min-width: 19px; height: 19px; padding: 0 4px;
   background: var(--c-badge) !important; color: #fff !important;
@@ -726,7 +727,7 @@ header { display: none !important; }
 #app #handbar .hcards { gap: 7px; }
 #app #handbar .hcard { width: 64px !important; height: 86px !important; }
 #app #handbar .hcard .hglyph svg { width: 38px; height: 38px; }
-#app #handbar .hcard .hn { min-width: 23px; height: 23px; line-height: 23px; font-size: 14px;
+#app #handbar .hcard .hn, #app #handbar .hdev .hn { min-width: 23px; height: 23px; line-height: 23px; font-size: 14px;
   border-radius: 2px 2px 2px 23px; }
 #app #handbar .hcard .hrate { font-size: 11px; bottom: 3px; }
 #app #handbar .hdevs { gap: 6px; margin-left: 18px; }
@@ -909,7 +910,7 @@ header { display: none !important; }
 #handbar { min-height: 140px; padding: 13px 12px; }
 #app #handbar .hcard { width: 74px !important; height: 112px !important; }
 #app #handbar .hcard .hglyph svg { width: 46px; height: 46px; }
-#app #handbar .hcard .hn {
+#app #handbar .hcard .hn, #app #handbar .hdev .hn {
   min-width: 30px; height: 30px; line-height: 30px; font-size: 19px;
   border-radius: 3px 3px 3px 30px; right: -4px; top: -4px;
   box-shadow: 0 2px 6px rgba(0,0,0,.4);
@@ -1360,8 +1361,12 @@ header { display: none !important; }
   color: #3a2600 !important;
   box-shadow: 0 2px 6px rgba(0,0,0,.3), inset 0 0 0 1.5px rgba(255,255,255,.5);
 }
-/* 自分の持っている発展カードの内訳も右へ。小さくても字は読める大きさで */
-#app #players-panel .pl .mydev { display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-end; }
+/* 自分の持っている発展カードの内訳。駒の残りを出していた行にそのまま置く
+   （駒の数は操作ボタンの右上にも出ているので、ここでは要らない） */
+#app #players-panel .pl .mydev {
+  display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-start;
+  margin-top: 2px;
+}
 #app #players-panel .pl .mydev .dv {
   font-size: 11px !important; font-weight: 700; padding: 2px 7px; border-radius: 999px;
   background: rgba(90, 70, 160, .16); color: #2c2360 !important; white-space: nowrap;
@@ -1375,10 +1380,5 @@ header { display: none !important; }
    資源の札と同じ読み方に揃える ── 種類ごとに 1 枚、右上に枚数。 */
 #app #handbar .hdevs { display: flex; gap: 6px; margin-left: 10px; }
 #app #handbar .hdev { position: relative; }
-#app #handbar .hdev .hn {
-  position: absolute; right: -3px; top: -3px;
-  min-width: 19px; height: 19px; padding: 0 4px;
-  background: var(--c-badge); color: #fff;
-  font-size: 12px; font-weight: 700; line-height: 19px; text-align: center;
-  border-radius: 2px 2px 2px 19px;
-}
+/* 枚数のバッジは資源の札と**同じ物**を使う（上の共通指定に .hdev を足してある）。
+   ここで別に書くと、画面の大きさごとの調整から取り残されて小さいままになる */

@@ -2259,16 +2259,22 @@ function renderPlayers() {
           <span title="使った騎士">${iconHtml("knight", 24, "light", "#0b141c")}<b>${p.playedKnights}</b></span>
           <span title="つながっている道">${iconHtml("road", 24, "light", "#0b141c")}<b>${p.longestRoad}</b></span>
         </div>
-        <div class="left">
-          <span class="lb">残り</span>
-          ${left(p.roadsLeft, "道", "road")}
-          ${left(p.settlementsLeft, "開拓地", "settle")}
-          ${left(p.citiesLeft, "都市", "city")}
-        </div>
+        ${
+          // 自分の欄は**駒の残りを出さない**。同じ数字は下の操作ボタンの
+          // 右上に出ているので二度読ませることになる。空いた行に、
+          // 自分だけが知っている**持っている発展カードの内訳**を置く
+          p.id === mySeat
+            ? (devHeld() ? `<div class="mydev">${devHeld()}</div>` : "")
+            : `<div class="left">
+                 <span class="lb">残り</span>
+                 ${left(p.roadsLeft, "道", "road")}
+                 ${left(p.settlementsLeft, "開拓地", "settle")}
+                 ${left(p.citiesLeft, "都市", "city")}
+               </div>`
+        }
         </div>
         <div class="pside">
           ${tags.length ? `<div class="ptags">${tags.join("")}</div>` : ""}
-          ${p.human && devHeld() ? `<div class="mydev">${devHeld()}</div>` : ""}
         </div>
       </div>`;
     if (blockedTraders.has(p.id)) d.classList.add("blocked");
@@ -3508,11 +3514,15 @@ function renderOffers() {
   // ★ 順番待ちの間に押した答えを預かって、番が来たら送る。
   //   エンジンは 1 人ずつ聞く作りだが、**押す方は待たされたくない**。
   //   カードは全員に同時に出ているので、押せない方が不自然。
-  const seqNow = state.last ? state.last.seq : 0;
-  if (pendingAnswer && pendingAnswer.seq !== seqNow) pendingAnswer = null;
-  if (pendingAnswer) {
+  // 🔴 預かりの目印に `state.last.seq` を使ってはいけない。
+  //    seq は**誰かが何かするたびに動く**ので、他の人が答えただけで
+  //    こちらの預かりが捨てられ、押した印が消える（＝押しても反応しない）。
+  //    同じ提案かどうかは、提案そのもの（誰の・何と何）で見る。
+  const tradeKey = JSON.stringify([t.proposer, t.give, t.want]);
+  if (pendingAnswer && pendingAnswer.key !== tradeKey) pendingAnswer = null;
+  if (pendingAnswer && !pendingAnswer.sent) {
     const a2 = state.actions.find((x) => x.kind === pendingAnswer.kind);
-    if (a2) { pendingAnswer = null; clear(); play(a2.i); return; }
+    if (a2) { pendingAnswer.sent = true; play(a2.i); return; }
   }
 
   // 止めている相手の提案は、カードを出さずにそのまま断る
@@ -3559,8 +3569,9 @@ function renderOffers() {
   const mine = (t.answers || []).find(
     (a) => a.p === mySeat && a.state && a.state !== "WAITING"
   );
+  if (mine) pendingAnswer = null;   // サーバの記録が来た。預かりは役目を終える
   const chosen =
-    pendingAnswer && pendingAnswer.seq === seqNow ? pendingAnswer.kind
+    pendingAnswer && pendingAnswer.key === tradeKey ? pendingAnswer.kind
     : mine && mine.state === "ACCEPTED" ? "ACCEPT_TRADE"
     : mine && mine.state === "REJECTED" ? "REJECT_TRADE"
     : mine && mine.state === "COUNTER" ? "COUNTER_OFFER"
@@ -3569,15 +3580,40 @@ function renderOffers() {
   //    描き直しは局面が動くたびに走るので、出た直後に押すと
   //    押している最中にボタンごと差し替わって、1 回目が捨てられる
   //    （「すぐ押すと反応しない」の正体）。
-  const sig = JSON.stringify([
-    t.proposer, t.give, t.want, chosen,
-    (t.answers || []).map((a) => `${a.p}:${a.state}`),
-  ]);
   // すでに送ってしまった答えは変えられない（エンジンに記録済み）。
   // まだ預かっているだけなら押し直せる ── その違いを画面で分ける
   const locked = !!mine;
-  const waiting = !!pendingAnswer && pendingAnswer.seq === seqNow;
-  if (box.dataset.sig === sig && box.firstElementChild) return;
+  const waiting = !!pendingAnswer && pendingAnswer.key === tradeKey && !pendingAnswer.sent;
+
+  // 🔴 **作り直すのは「別の提案になった時」だけ**。
+  //    みんなの返事や自分の答えが変わっただけで作り直すと、提案が出た直後
+  //    （他の人が次々に答えている最中）にボタンが何度も差し替わり、
+  //    押している最中に消えて 1 回目が捨てられる ──「すぐ押すと反応しない」の正体。
+  //    返事の印やボタンの状態は、**同じ札の上で書き換える**。
+  const sig = tradeKey;
+  const old = box.firstElementChild;
+  if (box.dataset.sig === sig && old) {
+    const ans = old.querySelector(".oc-answers");
+    if (ans && ans.innerHTML !== badges) ans.innerHTML = badges;
+    old.classList.toggle("answered", !!chosen);
+    const set = (sel, kind) => {
+      const b2 = old.querySelector(sel);
+      if (!b2) return;
+      b2.classList.toggle("chosen", chosen === kind);
+      b2.disabled = locked;
+    };
+    set(".oc-b.edit", "COUNTER_OFFER");
+    set(".oc-b.no", "REJECT_TRADE");
+    set(".oc-b.yes", "ACCEPT_TRADE");
+    let note = old.querySelector(".oc-note");
+    if (waiting && !note) {
+      note = document.createElement("div");
+      note.className = "oc-note";
+      note.textContent = "みんなの返事を待っています（押し直せます）";
+      old.appendChild(note);
+    } else if (!waiting && note) note.remove();
+    return;
+  }
   box.dataset.sig = sig;
   box.innerHTML = "";
 
@@ -3613,10 +3649,12 @@ function renderOffers() {
   const answer = (kind, el) => {
     mark(el);
     sfx.play(kind === "ACCEPT_TRADE" ? "offerYes" : "offerNope");
-    // まだ自分の番でなくても、押した物は預かる（描き直しても印が残る）
-    pendingAnswer = { seq: seqNow, kind };
+    // 🔴 送った後も**サーバの返事が来るまで印を持ち続ける**。
+    //    送った瞬間に消すと、返事が届くまでの間だけ押していない見た目になり、
+    //    「押しても反応しない」ように見える（オンラインでは往復ぶん空く）。
+    pendingAnswer = { key: tradeKey, kind, sent: false };
     const a2 = state.actions.find((x) => x.kind === kind);
-    if (a2) { pendingAnswer = null; play(a2.i); }
+    if (a2) { pendingAnswer.sent = true; play(a2.i); }
   };
   card.querySelector(".edit").addEventListener("click", (ev) => {
     mark(ev.currentTarget);
