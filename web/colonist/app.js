@@ -5382,8 +5382,15 @@ function boot() {
       const app = document.getElementById("app");
       // 読み直しただけなら、控えから続きに戻す。
       // 戻せなければ（控えが無い・合わない）いつも通り待機所を出す
-      const joining = new URLSearchParams(location.search).get("join");
-      const back = joining ? false : restoreGame();
+      // 🔴 参加リンクで入った人は、URL に `?join=` が**残ったまま**になる。
+      //    それを見て「招待から来た」と決めつけると、読み直すたびに
+      //    招待の画面へ戻され、対局に復帰できない（実際に踏んだ）。
+      //    同じ部屋の控えがあるなら、招待より控えを優先する。
+      const joining = (new URLSearchParams(location.search).get("join") || "").toUpperCase();
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "null"); } catch {}
+      const sameRoom = !!(saved && saved.online && joining && saved.online.room === joining);
+      const back = joining && !sameRoom ? false : restoreGame();
       if (back === "online") {
         // 手順はサーバから届く。届くまでは待機所を出しておく
         if (app) app.hidden = true;
