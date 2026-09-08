@@ -3370,7 +3370,17 @@ function placeBand() {
     app.style.setProperty(name, `${Math.max(0, v)}px`);
   };
   put("--band-hand", "handbar", 126);
-  put("--band-btn", "actions", 98);
+  // 🔴 右側は**状態の帯（「あなたの番」）まで含めて**避ける。
+  //    ボタンの上端で測ると、その上に居る状態の帯にサイコロが被る（実際に被った）
+  put("--band-btn", "prompt", 140);
+  // 念のため、状態の帯が測れない時のためにボタンの上端も見る
+  const a = document.getElementById("actions");
+  const r = a ? a.getBoundingClientRect() : null;
+  if (r && r.height) {
+    const byBtn = Math.round((innerHeight - r.top) / z);
+    const cur = parseFloat(app.style.getPropertyValue("--band-btn")) || 0;
+    app.style.setProperty("--band-btn", `${Math.max(cur, byBtn)}px`);
+  }
 }
 
 /** 対案を組んでいる最中か。押されるまでは小さいカードだけ出す */
