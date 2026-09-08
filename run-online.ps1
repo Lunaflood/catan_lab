@@ -26,17 +26,21 @@ Get-Process catan-server -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 300
 
 # --- 必要な物を組み立てる ------------------------------------------------
-if (-not (Test-Path "web\catan_wasm.wasm")) {
-    Say "盤のエンジンを組み立てています..." Yellow
-    cargo build -p catan-wasm --target wasm32-unknown-unknown --release
-    if ($LASTEXITCODE -ne 0) { Say "組み立てに失敗しました。Rust が入っているか確認してください。" Red; pause; exit 1 }
-    Copy-Item "target\wasm32-unknown-unknown\release\catan_wasm.wasm" "web\" -Force
-}
-if (-not (Test-Path "target\release\catan-server.exe")) {
-    Say "サーバを組み立てています。初回は数分かかります..." Yellow
-    cargo build --release -p catan-server
-    if ($LASTEXITCODE -ne 0) { Say "組み立てに失敗しました。Rust が入っているか確認してください。" Red; pause; exit 1 }
-}
+#
+# 🔴 **毎回組み立てる**。「無ければ作る」にしていた時、直したのに
+#    古い実行ファイルがそのまま動き続けた。変更が無ければ cargo は
+#    数秒で終わるので、条件を付けずに通す方が安全。
+Say "盤のエンジンを組み立てています..." Yellow
+cargo build -p catan-wasm --target wasm32-unknown-unknown --release
+if ($LASTEXITCODE -ne 0) { Say "組み立てに失敗しました。Rust が入っているか確認してください。" Red; pause; exit 1 }
+# 見た目は 2 つある（web\ と web\colonist\）。**どちらにも同じ物を置く**。
+# 片方だけ新しいと、そちらだけ直っていて原因が分からなくなる
+Copy-Item "target\wasm32-unknown-unknown\release\catan_wasm.wasm" "web\" -Force
+Copy-Item "target\wasm32-unknown-unknown\release\catan_wasm.wasm" "web\colonist\" -Force
+
+Say "サーバを組み立てています。初回は数分かかります..." Yellow
+cargo build --release -p catan-server
+if ($LASTEXITCODE -ne 0) { Say "組み立てに失敗しました。Rust が入っているか確認してください。" Red; pause; exit 1 }
 
 # --- 同じ家の中から入るためのアドレス -------------------------------------
 # 既定ゲートウェイを持つ口だけが「外と繋がっている口」。

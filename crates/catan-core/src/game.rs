@@ -325,6 +325,99 @@ impl Game {
         self.winner.is_some()
     }
 
+    /// 局面をひとつの数にまとめた **指紋**。
+    ///
+    /// オンライン対戦は、盤を送らずに「指された手の並び」だけを配って
+    /// 各端末が同じ盤を作り直す方式なので、並びが 1 手でも食い違うと
+    /// **そこから先ずっと別の対局を見ることになる**。しかもその食い違いは
+    /// 画面に何も出ない（手番だけは合っていることがある）。
+    ///
+    /// そこで 1 手ごとにこの指紋を突き合わせる。ずれた瞬間に必ず気づける。
+    /// 乱数の状態は入れない（同じ盤なら次の出目も同じなので、
+    /// 入れなくても取りこぼさない）。
+    pub fn fingerprint(&self) -> u32 {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut put = |v: u64| {
+            h ^= v.wrapping_add(0x9e37_79b9_7f4a_7c15);
+            h = h.wrapping_mul(0x0100_0000_01b3);
+            h ^= h >> 29;
+        };
+        put(self.turn as u64);
+        put(self.turn_player as u64);
+        put(self.to_act as u64);
+        put(prompt_tag(&self.prompt) as u64);
+        put(self.rolled as u64);
+        put(self.setup_index as u64);
+        put(self.free_roads as u64);
+        put(self.dev_played_this_turn as u64);
+        for r in 0..NUM_RESOURCES {
+            put(self.bank[r] as u64);
+        }
+        for d in self.dev_deck {
+            put(d as u64);
+        }
+        put(self.board.robber as u64);
+        for n in 0..NUM_NODES {
+            put(match self.board.building[n] {
+                None => 0,
+                Some(b) => 1 + b.owner as u64 * 2 + matches!(b.kind, BuildingKind::City) as u64,
+            });
+        }
+        for e in 0..NUM_EDGES {
+            put(self.board.road[e].map_or(0, |p| 1 + p as u64));
+        }
+        for q in 0..self.n() {
+            let p = &self.players[q];
+            for r in 0..NUM_RESOURCES {
+                put(p.hand[r] as u64);
+            }
+            for d in p.dev {
+                put(d as u64);
+            }
+            for d in p.played_dev {
+                put(d as u64);
+            }
+            put(p.roads_left as u64);
+            put(p.settlements_left as u64);
+            put(p.cities_left as u64);
+            put(self.discard_pending[q] as u64);
+        }
+        put(self.longest_road_owner.map_or(0, |p| 1 + p as u64));
+        put(self.largest_army_owner.map_or(0, |p| 1 + p as u64));
+        put(self.winner.map_or(0, |p| 1 + p as u64));
+        // 交渉の途中も指紋に入れる（提案の中身がずれても気づけるように）
+        match &self.trade {
+            None => put(0),
+            Some(t) => {
+                put(1);
+                put(t.proposer as u64);
+                put(t.responder as u64);
+                put(t.answered as u64);
+                for r in 0..NUM_RESOURCES {
+                    put(t.give[r] as u64);
+                    put(t.want[r] as u64);
+                }
+                for q in 0..MAX_PLAYERS {
+                    put(t.accepted[q] as u64);
+                    put(t.responded[q] as u64);
+                    for alt in &t.counters[q] {
+                        match alt {
+                            None => put(0),
+                            Some((g, w)) => {
+                                put(1);
+                                for r in 0..NUM_RESOURCES {
+                                    put(g[r] as u64);
+                                    put(w[r] as u64);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        (h ^ (h >> 32)) as u32
+    }
+
     #[inline]
     pub fn is_setup(&self) -> bool {
         self.setup_index < 2 * self.num_players
@@ -1566,4 +1659,19 @@ pub fn enumerate_bundles(hand: &Bundle, k: u8, out: &mut Vec<Bundle>) {
     }
     let mut cur = EMPTY;
     rec(hand, 0, k, &mut cur, out);
+}
+
+/// 指紋に混ぜるための、`Prompt` の通し番号
+fn prompt_tag(p: &Prompt) -> u8 {
+    match p {
+        Prompt::SetupSettlement => 0,
+        Prompt::SetupRoad => 1,
+        Prompt::PlayTurn => 2,
+        Prompt::Discard => 3,
+        Prompt::MoveRobber => 4,
+        Prompt::FreeRoad => 5,
+        Prompt::DecideTrade => 6,
+        Prompt::DecideAcceptees => 7,
+        Prompt::GameOver => 8,
+    }
 }

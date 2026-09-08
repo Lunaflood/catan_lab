@@ -241,6 +241,19 @@ pub extern "C" fn last_action_index() -> i32 {
     SESSION.with(|s| s.borrow().as_ref().map_or(-1, |sess| sess.last_index))
 }
 
+/// いまの局面の **指紋**。オンライン対戦でサーバと突き合わせる。
+///
+/// 🔴 オンラインは盤を送らず「指された手の並び」だけを配って
+/// 各端末が同じ盤を作り直す方式なので、並びが 1 手でも食い違うと
+/// **そこから先ずっと別の対局を見る**ことになる。しかも手番だけは
+/// 合っていることがあるので、画面には何も出ない
+/// （症状: 自分の数字が出たのに資源が来ない・ログにも出ない）。
+/// 1 手ごとにこれを比べれば、ずれた瞬間に必ず気づける。
+#[no_mangle]
+pub extern "C" fn fingerprint() -> u32 {
+    SESSION.with(|s| s.borrow().as_ref().map_or(0, |sess| sess.game.fingerprint()))
+}
+
 /// CPU に 1 手指させる。指したら 1、手番が人間なら 0。
 #[no_mangle]
 pub extern "C" fn bot_step() -> u32 {
@@ -1486,6 +1499,30 @@ fn note(
     let turn = sess.game.turn;
     sess.log.push(LogEntry { actor, text: line, major, cost, gain, turn });
 
+    // 銀行が空で配れなかった時に、**その理由を書く**。
+    //
+    // 公式規則では、ある資源の必要数が銀行の残りを超え、しかも受け取る人が
+    // 2 人以上いる場合、**誰も受け取れない**（1 人だけなら残りを全部渡す）。
+    // 正しい動きだが、何も出ないと「自分の数字が出たのに資源が来ない」としか
+    // 見えず、故障と区別が付かない。
+    if matches!(a, Action::Roll) {
+        if let Outcome::Dice(x, y) = out {
+            let sum = x + y;
+            if sum != 7 {
+                for line in shortage_notes(&sess.game, sum, &before_hands) {
+                    sess.log.push(LogEntry {
+                        actor,
+                        text: line,
+                        major: true,
+                        cost: EMPTY,
+                        gain: EMPTY,
+                        turn: sess.game.turn,
+                    });
+                }
+            }
+        }
+    }
+
     // サイコロの後は「誰が何を得たか」を人数ぶん並べる。
     // 手番の人の分は上の行に付いているので、それ以外を出す。
     if matches!(a, Action::Roll) {
@@ -1506,4 +1543,49 @@ fn note(
             }
         }
     }
+}
+
+/// 銀行が足りずに配れなかった資源の説明。
+///
+/// 盤から「本来いくら必要だったか」を数え、実際に増えた枚数と突き合わせる。
+/// 盤は産出では変わらない（建物も盗賊も動かない）ので、産出後の盤で数えてよい。
+fn shortage_notes(g: &Game, roll: u8, before: &[Bundle; MAX_PLAYERS]) -> Vec<String> {
+    let topo = Topology::get();
+    let mut need = [0u16; 5];
+    for t in 0..NUM_TILES {
+        if g.board.tile_number[t] != roll || t as TileId == g.board.robber {
+            continue;
+        }
+        let Some(res) = g.board.tile_resource[t] else { continue };
+        for n in topo.tile_nodes[t] {
+            if let Some(b) = g.board.building[n as usize] {
+                if (b.owner as usize) >= g.n() {
+                    continue;
+                }
+                need[res.idx()] += match b.kind {
+                    BuildingKind::Settlement => 1,
+                    BuildingKind::City => 2,
+                };
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for r in RESOURCES {
+        let i = r.idx();
+        if need[i] == 0 {
+            continue;
+        }
+        let gave: u16 = (0..g.n())
+            .map(|q| g.players[q].hand[i].saturating_sub(before[q][i]) as u16)
+            .sum();
+        if gave >= need[i] {
+            continue;
+        }
+        out.push(if gave == 0 {
+            format!("銀行の{}が足りず、誰も受け取れなかった", r.ja())
+        } else {
+            format!("銀行の{}が足りず、残り {gave} 枚だけ配られた", r.ja())
+        });
+    }
+    out
 }

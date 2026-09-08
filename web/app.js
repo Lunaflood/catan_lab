@@ -3439,6 +3439,17 @@ function netApply(m) {
     // ここがずれると以降が全部おかしくなる。黙って進めない
     net.err = "盤面がサーバとずれました。ホームに戻ってやり直してください";
   }
+
+  // 🔴 1 手ごとに盤そのものを突き合わせる。手番だけの比較では、
+  // 手番を動かさない手（銀行との交換など）の抜けを素通りしてしまう
+  if (typeof m.fp === "number" && wasm.fingerprint) {
+    const mine = wasm.fingerprint() >>> 0;
+    if (mine !== (m.fp >>> 0)) {
+      net.err = "盤面がサーバとずれました。ホームに戻ってやり直してください";
+      console.error("指紋の食い違い", { mine, server: m.fp >>> 0, msg: m });
+    }
+  }
+
   refreshState();
   // 手番の食い違いは、ずれの一番早い兆候
   if (typeof m.toAct === "number" && state.toAct !== m.toAct) {

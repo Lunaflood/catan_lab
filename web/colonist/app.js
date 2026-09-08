@@ -4390,6 +4390,9 @@ function announce(html, cls, ms) {
 }
 
 function render() {
+  // 盤がまだ描かれていない（待機所にいる）間は何もしない。
+  // 窓の大きさが変わっただけで呼ばれる経路があるので、ここで受け止める
+  if (!state || !board) return;
   drawState();
   runAnimations();
   renderPlayers();
@@ -4534,6 +4537,24 @@ function netApply(m) {
     // ここがずれると以降が全部おかしくなる。黙って進めない
     net.err = "盤面がサーバとずれました。ホームに戻ってやり直してください";
   }
+
+  // 🔴 **1 手ごとに盤そのものを突き合わせる**。
+  //
+  // オンラインは盤を送らず「指された手の並び」だけを配って、各端末が
+  // 自分のエンジンで同じ盤を作り直す方式。並びが 1 手でも食い違うと、
+  // そこから先はずっと別の対局を見ることになる。
+  // 手番（toAct）だけの比較では足りない ── 手番を動かさない手
+  // （銀行との交換など）が抜けても素通りしてしまい、
+  // **画面に何も出ないまま**「自分の数字が出たのに資源が来ない」が起きる。
+  // 指紋はエンジンが盤全体から作るので、この種のずれを必ず捕まえる。
+  if (typeof m.fp === "number" && wasm.fingerprint) {
+    const mine = wasm.fingerprint() >>> 0;
+    if (mine !== (m.fp >>> 0)) {
+      net.err = "盤面がサーバとずれました。ホームに戻ってやり直してください";
+      console.error("指紋の食い違い", { mine, server: m.fp >>> 0, msg: m });
+    }
+  }
+
   if (netBulk) return;   // まとめてなぞっている間は、最後に一度だけ描く
   refreshState();
   // 手番の食い違いは、ずれの一番早い兆候
@@ -4780,7 +4801,9 @@ function saveGame() {
     }
     if (!gameSetup || watching) return;
     if (state && state.winner !== null) { localStorage.removeItem(SAVE_KEY); return; }
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, setup: gameSetup, journal }));
+    // 指紋も一緒に控える。なぞり直した盤が本当に同じかを読み込み時に検めるため
+    const fp = wasm.fingerprint ? wasm.fingerprint() >>> 0 : null;
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, setup: gameSetup, journal, fp }));
   } catch {
     // 覚えられなくても、この対局の間は遊べる
   }
@@ -4840,6 +4863,17 @@ function restoreGame() {
       if (!replayOne(e)) throw new Error("控えが合わない");
     }
     replaying = false;
+    // 🔴 **なぞり直した盤が、保存した時と同じか確かめる**。
+    // 1 手でも取りこぼしがあると、盤は静かに違う物になる
+    // （症状: 自分の数字が出たのに資源が来ない・ログにも出ない）。
+    // ここで気づけば、中途半端な盤を出さずに最初からやり直せる
+    if (typeof save.fp === "number" && wasm.fingerprint) {
+      const mine = wasm.fingerprint() >>> 0;
+      if (mine !== (save.fp >>> 0)) {
+        console.error("控えの指紋が合わない", { mine, saved: save.fp >>> 0 });
+        throw new Error("なぞり直した盤が保存時と違う");
+      }
+    }
   } catch {
     replaying = false;
     dropSave();

@@ -252,8 +252,6 @@ impl Room {
     // ---------------------------------------------------------------- 対局
 
     pub fn start(&mut self) {
-        let players = self.players();
-        // 席を配る。人が先に座り、残りが CPU。
         // 誰が 1 番手になるかは種で決めるので、部屋を立てた人が有利にはならない
         let seeds: [u32; 4] = [
             (now_ms() as u32) ^ 0x9e37_79b9,
@@ -261,6 +259,15 @@ impl Room {
             (now_ms() as u32).wrapping_add(0x0f0f_0f0f),
             (now_ms() as u32).rotate_left(7) ^ 0xabcd_ef01,
         ];
+        self.start_with_seeds(seeds);
+    }
+
+    /// 種を指定して始める。**試験から呼ぶために分けてある**
+    /// （時計から種を取ると、走らせるたびに別の対局になり、
+    /// 落ちたり通ったりする試験になってしまう）
+    pub fn start_with_seeds(&mut self, seeds: [u32; 4]) {
+        let players = self.players();
+        // 席を配る。人が先に座り、残りが CPU。
         let off = (seeds[1] as usize) % players;
         self.seat_member = vec![None; players];
         for (i, _) in self.members.iter().enumerate() {
@@ -401,7 +408,9 @@ impl Room {
         let over = g.is_over();
         let turn = g.turn;
         let to_act = g.to_act;
-        let msg = format!("{{\"t\":\"act\",{echo},\"turn\":{turn},\"toAct\":{to_act}}}");
+        let fp = g.fingerprint();
+        let msg =
+            format!("{{\"t\":\"act\",{echo},\"turn\":{turn},\"toAct\":{to_act},\"fp\":{fp}}}");
         self.history.push(msg.clone());
         self.broadcast(&msg);
         if over {
@@ -503,7 +512,10 @@ impl Room {
         let over = g.is_over();
         let turn = g.turn;
         let to_act = g.to_act;
-        let msg = format!("{{\"t\":\"act\",\"i\":{index},\"turn\":{turn},\"toAct\":{to_act}}}");
+        let fp = g.fingerprint();
+        let msg = format!(
+            "{{\"t\":\"act\",\"i\":{index},\"turn\":{turn},\"toAct\":{to_act},\"fp\":{fp}}}"
+        );
         self.history.push(msg.clone());
         self.broadcast(&msg);
         if over {
@@ -572,12 +584,18 @@ impl Room {
             }
         }
         let g = self.game.as_ref().unwrap();
-        let (over, turn, to_act) = (g.is_over(), g.turn, g.to_act);
+        let (over, turn, to_act, fp) = (g.is_over(), g.turn, g.to_act, g.fingerprint());
         let msg = format!(
-            "{{\"t\":\"act\",\"k\":\"maritime\",\"g\":[{},{},{},{},{}],\"w\":[{},{},{},{},{}],\"turn\":{turn},\"toAct\":{to_act}}}",
+            "{{\"t\":\"act\",\"k\":\"maritime\",\"g\":[{},{},{},{},{}],\"w\":[{},{},{},{},{}],\
+             \"turn\":{turn},\"toAct\":{to_act},\"fp\":{fp}}}",
             give[0], give[1], give[2], give[3], give[4],
             take[0], take[1], take[2], take[3], take[4]
         );
+        // 🔴 **控えに残す**。ここを忘れると、繋ぎ直してきた人へ渡す並びから
+        // 海上交易だけが抜け落ちる。その端末は以降ずっと別の盤を見ることになり、
+        // しかも手番は合ったままなので**何も表示されずにずれる**
+        // （症状: 自分の数字が出たのに資源が来ない・ログにも出ない）。
+        self.history.push(msg.clone());
         self.broadcast(&msg);
         if over {
             self.phase = Phase::Over;
@@ -610,5 +628,236 @@ impl Room {
         }
         self.broadcast("{\"t\":\"home\"}");
         self.send_lobby();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use catan_core::action::Prompt;
+    use catan_core::board::RESOURCES;
+    use catan_core::rng::Rng;
+
+    /// 端末の代わり。**開始の合図と控えの並びだけ**を頼りに盤を作り直す。
+    /// 本物の端末（web/colonist/app.js の `netApply`）と同じことをする
+    struct Client {
+        game: Game,
+    }
+
+    impl Client {
+        fn new(room: &Room) -> Client {
+            let players = room.seat_member.len();
+            let mut cfg = GameConfig::default();
+            cfg.turn_clock = TurnClock::PerAction { ms: 500 };
+            cfg.turn_time_limit_ms = None;
+            cfg.answer_last_mask = (0..players)
+                .filter(|&s| room.seat_member[s].is_some())
+                .fold(0u8, |m, s| m | (1 << s));
+            let s = room.seeds;
+            Client {
+                game: Game::with_streams(
+                    players as u8,
+                    s[0] as u64,
+                    s[1] as u64,
+                    s[2] as u64,
+                    s[3] as u64,
+                    cfg,
+                ),
+            }
+        }
+
+        fn replay(&mut self, msg: &str) {
+            if let Some(rest) = msg.split("\"k\":\"maritime\"").nth(1) {
+                let g = nums(rest, "\"g\":[");
+                let w = nums(rest, "\"w\":[");
+                let mut queue = Vec::new();
+                for (i, r) in RESOURCES.iter().enumerate() {
+                    for _ in 0..w[i] {
+                        queue.push(*r);
+                    }
+                }
+                let mut qi = 0;
+                for (i, r) in RESOURCES.iter().enumerate() {
+                    if g[i] == 0 {
+                        continue;
+                    }
+                    let me = self.game.to_act;
+                    let rate = self.game.board.best_maritime_rate(me, *r);
+                    for _ in 0..(g[i] / rate) {
+                        self.game.apply(Action::MaritimeTrade {
+                            give: *r,
+                            count: rate,
+                            take: queue[qi],
+                        });
+                        qi += 1;
+                    }
+                }
+            } else {
+                let i: usize = msg
+                    .split("\"i\":")
+                    .nth(1)
+                    .and_then(|s| s.split(|c: char| !c.is_ascii_digit()).next())
+                    .and_then(|s| s.parse().ok())
+                    .expect("番号のある手のはず");
+                let acts = self.game.legal_actions();
+                assert!(i < acts.len(), "配られた番号が端末の一覧に無い");
+                self.game.apply(acts[i]);
+            }
+            // サーバが電文に添えた指紋と、いま作った盤の指紋が合うこと
+            if let Some(fp) = msg.split("\"fp\":").nth(1) {
+                let fp: u32 = fp
+                    .split(|c: char| !c.is_ascii_digit())
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .unwrap();
+                assert_eq!(self.game.fingerprint(), fp, "指紋が食い違った: {msg}");
+            } else {
+                panic!("指紋の無い電文: {msg}");
+            }
+        }
+    }
+
+    fn nums(s: &str, key: &str) -> [u8; 5] {
+        let body = s.split(key).nth(1).unwrap().split(']').next().unwrap();
+        let mut out = [0u8; 5];
+        for (i, part) in body.split(',').enumerate().take(5) {
+            out[i] = part.trim().parse().unwrap_or(0);
+        }
+        out
+    }
+
+    /// 人 1 人 + CPU で 1 局進める。人の手は乱数で選び、
+    /// 交換できる時は**海上交易**（別経路）も混ぜる。
+    /// 戻り値は (部屋, 海上交易をした回数)
+    fn play(seed: u64) -> (Room, usize) {
+        let mut room = Room::new("TEST".into());
+        room.members.push(Member::new("tok".into(), "私".into()));
+        room.balance(4);
+        room.start_with_seeds([
+            seed as u32,
+            (seed >> 7) as u32 ^ 0x1234_5678,
+            (seed >> 13) as u32 ^ 0x0f0f_0f0f,
+            (seed >> 19) as u32 ^ 0xabcd_ef01,
+        ]);
+        let seat = room.members[0].seat.unwrap();
+        let mut rng = Rng::with_stream(seed, 99);
+        let mut trades = 0usize;
+
+        for _ in 0..4000 {
+            room.bot_at = 0;
+            if room.step_bot() {
+                continue;
+            }
+            let g = room.game.as_ref().unwrap();
+            if g.is_over() || g.to_act as usize != seat {
+                break;
+            }
+            // 3 回に 1 回くらいは海上交易を試す
+            if matches!(g.prompt, Prompt::PlayTurn) && g.rolled && rng.below(3) == 0 {
+                let hand = g.players[seat].hand;
+                let mut plans = Vec::new();
+                for (i, _r) in RESOURCES.iter().enumerate() {
+                    let rate = g.board.best_maritime_rate(seat as u8, RESOURCES[i]);
+                    if rate == 0 || hand[i] < rate {
+                        continue;
+                    }
+                    let Some(take) = (0..5).find(|&k| k != i && g.bank[k] > 0) else { continue };
+                    let mut give = [0u8; 5];
+                    give[i] = rate;
+                    let mut want = [0u8; 5];
+                    want[take] = 1;
+                    plans.push((give, want));
+                }
+                let mut done = false;
+                for (give, want) in plans {
+                    if room.apply_custom(seat, "maritime", give, want, 0).is_ok() {
+                        trades += 1;
+                        done = true;
+                        break;
+                    }
+                }
+                if done {
+                    continue;
+                }
+            }
+            let acts = room.game.as_ref().unwrap().legal_actions();
+            if acts.is_empty() {
+                break;
+            }
+            let i = rng.below(acts.len() as u32) as usize;
+            if room.apply_index(seat, i).is_err() {
+                break;
+            }
+        }
+        (room, trades)
+    }
+
+    /// 🔴 実際に起きた不具合の再現。
+    ///
+    /// 海上交易（銀行・港との交換）だけが控えに残っていなかったため、
+    /// 読み直した端末は**その分を抜かした並び**で盤を作り直していた。
+    /// 手番は合ったままずれるので、画面には何も出ない。
+    /// 症状は「自分の数字が出たのに資源が来ない・ログにも出ない」。
+    #[test]
+    fn 繋ぎ直した端末はサーバと同じ盤になる() {
+        let mut total_trades = 0usize;
+        let mut moves = 0usize;
+        for seed in 0..30u64 {
+            let (room, trades) = play(1_000 + seed);
+            total_trades += trades;
+            moves += room.history.len();
+            // 繋ぎ直してきた端末が、控えだけで同じ盤を作れること。
+            // `replay` は 1 手ごとに指紋も突き合わせるので、
+            // どの手でずれたのかまで分かる
+            let mut c = Client::new(&room);
+            for msg in room.history.clone() {
+                c.replay(&msg);
+            }
+            assert_eq!(
+                c.game.fingerprint(),
+                room.game.as_ref().unwrap().fingerprint(),
+                "seed {seed}: 繋ぎ直した端末の盤がサーバと違う"
+            );
+        }
+        println!("30 局 / 配った手 {moves} / うち海上交易 {total_trades}");
+        assert!(total_trades > 20, "海上交易を通っていない（試験になっていない）");
+    }
+
+    /// 対局を 1 つ JSON に書き出す。**本物の wasm でなぞり直す試験**に渡すため。
+    /// `CATAN_DUMP` にファイル名を入れて走らせた時だけ書く
+    #[test]
+    fn 端末での照合用に対局を書き出す() {
+        let Ok(path) = std::env::var("CATAN_DUMP") else { return };
+        // 海上交易（不具合のあった経路）を十分に含む対局を選ぶ
+        let (room, trades) = (0..60u64)
+            .map(play)
+            .find(|(_, t)| *t >= 4)
+            .expect("海上交易を 4 回以上含む対局が見つからない");
+        let s = room.seeds;
+        let humans: Vec<String> = (0..room.seat_member.len())
+            .map(|i| if room.seat_member[i].is_some() { "true" } else { "false" }.to_string())
+            .collect();
+        let body = format!(
+            "{{\"seeds\":[{},{},{},{}],\"players\":{},\"humans\":[{}],\"trades\":{},\"msgs\":[{}]}}",
+            s[0], s[1], s[2], s[3],
+            room.seat_member.len(),
+            humans.join(","),
+            trades,
+            room.history.join(",")
+        );
+        std::fs::write(&path, body).unwrap();
+        println!("書き出した: {path}（手 {} / 海上交易 {trades}）", room.history.len());
+    }
+
+    /// 配る電文には必ず指紋が入っていること。
+    /// 入っていない経路があると、そこだけ黙ってずれる余地が残る
+    #[test]
+    fn 配る手には必ず指紋が付く() {
+        let (room, _) = play(777);
+        assert!(room.history.len() > 20);
+        for msg in &room.history {
+            assert!(msg.contains("\"fp\":"), "指紋の無い電文がある: {msg}");
+        }
     }
 }
