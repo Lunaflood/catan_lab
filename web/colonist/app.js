@@ -910,19 +910,18 @@ function drawBuildAsk(gHints) {
     .split(/\s+/).map(Number);
   const top = vb[1] || 0;
   const above = y - 40 - 22 >= top;
-  const g = el("g", { class: "buildask", transform: `translate(${x},${above ? y - 40 : y + 44})` }, gHints);
-  el("rect", { x: -44, y: -20, width: 88, height: 40, rx: 20, class: "ba-bg" }, g);
-  const btn = (dx, cls, mark, tip, fn) => {
-    const b = el("g", { class: "ba-b " + cls, transform: `translate(${dx},0)` }, g);
-    el("circle", { cx: 0, cy: 0, r: 16, class: "ba-c" }, b);
-    const t = el("text", { x: 0, y: 6, "text-anchor": "middle", class: "ba-t" }, b);
-    t.textContent = mark;
-    b.appendChild(title(tip));
-    b.addEventListener("click", (ev) => { ev.stopPropagation(); fn(); });
-    return b;
-  };
-  btn(-21, "no", "✗", "選び直す", () => { pendingBuild = null; render(); });
-  btn(21, "yes", "✓", "ここに建てる", () => {
+  // ★ 出すのは ✓ だけ。やめたい時は**同じ場所をもう一度押す**か、
+  //   別の場所を押せばそちらに移る。取り消しの札を並べると、
+  //   置くたびに「どちらを押すか」を読ませることになる
+  const g = el("g", { class: "buildask", transform: `translate(${x},${above ? y - 38 : y + 42})` }, gHints);
+  el("circle", { cx: 0, cy: 0, r: 19, class: "ba-bg" }, g);
+  const b = el("g", { class: "ba-b yes" }, g);
+  el("circle", { cx: 0, cy: 0, r: 16, class: "ba-c" }, b);
+  const t = el("text", { x: 0, y: 6, "text-anchor": "middle", class: "ba-t" }, b);
+  t.textContent = "✓";
+  b.appendChild(title("ここに建てる（やめる時はもう一度この場所を押す）"));
+  b.addEventListener("click", (ev) => {
+    ev.stopPropagation();
     const i = pendingBuild.i;
     pendingBuild = null;
     play(i);
@@ -1821,7 +1820,9 @@ let robberTile = null;
  */
 let pendingBuild = null;
 function selectSpot(a) {
-  pendingBuild = { i: a.i, kind: a.kind, label: a.label, node: a.node, edge: a.edge };
+  // 同じ場所をもう一度押したら取り消し（✓ しか出していないので、これが逃げ道）
+  if (pendingBuild && pendingBuild.i === a.i) pendingBuild = null;
+  else pendingBuild = { i: a.i, kind: a.kind, label: a.label, node: a.node, edge: a.edge };
   render();
 }
 
@@ -2339,8 +2340,6 @@ function renderHand() {
           toast("同じ資源を両側には置けません");
           return;
         }
-        // 中身を決めたのだから「相手任せ」は下ろす
-        draft.open.give = false;
         draft.give[i]++;
         renderActions();
         renderHand();
@@ -2564,23 +2563,24 @@ function renderOfferComposer(box, mode = "offer") {
     RES.every((_, i) => draft.give[i] % rate[i] === 0) &&
     Number.isInteger(times) && wTotal === times;
   // 片側が「?」なら、もう片側に中身があれば出せる。両方「?」は何も動かないので不可
-  const playersOk = openG
-    ? wTotal > 0
-    : openW
-    ? gTotal > 0
-    : gTotal > 0 && wTotal > 0;
+  // 段に何かある（札でも「?」でも）＝その段は空ではない。
+  // 両側とも「?」だけでは何も動かないので出せない
+  const gHas = gTotal > 0 || openG, wHas = wTotal > 0 || openW;
+  const playersOk = gHas && wHas && (gTotal > 0 || wTotal > 0);
 
   const sample = RES.map((r, i) =>
     `<div class="tsample ${r}" data-i="${i}" title="${RES_JA[r]} を「もらう」に足す">
        ${glyphHtml(r, 26)}</div>`).join("");
+  // 札と「?」は**並べて置ける**。「小麦1 と、あと何か」が作れる
   const lane = (which) =>
-    draft.open[which]
+    RES.map((r, i) => draft[which][i] > 0
+      ? `<div class="lanecard ${r}" data-w="${which}" data-i="${i}" title="押すと 1 枚戻します">
+           ${glyphHtml(r, 22)}<span class="cnt">${draft[which][i]}</span></div>`
+      : "").join("") +
+    (draft.open[which]
       ? `<div class="lanecard any" data-open="${which}"
-              title="この段は相手に決めてもらいます（押すと戻します）">?</div>`
-      : RES.map((r, i) => draft[which][i] > 0
-          ? `<div class="lanecard ${r}" data-w="${which}" data-i="${i}" title="押すと 1 枚戻します">
-               ${glyphHtml(r, 22)}<span class="cnt">${draft[which][i]}</span></div>`
-          : "").join("");
+              title="ここは相手に決めてもらいます（押すと戻します）">?</div>`
+      : "");
   // 「?」の札。その段の中身を相手に決めてもらう（colonist と同じ）
   const anyBtn = (which, tip) =>
     `<button class="tc-any${draft.open[which] ? " on" : ""}" data-any="${which}" title="${tip}">?</button>`;
@@ -2610,8 +2610,6 @@ function renderOfferComposer(box, mode = "offer") {
     c.addEventListener("click", () => {
       const i = +c.dataset.i;
       if (draft.give[i] > 0) { toast("同じ資源を両側には置けません"); return; }
-      // 中身を決めたのだから「相手任せ」は下ろす
-      draft.open.want = false;
       draft.want[i] = Math.min(19, draft.want[i] + 1);
       renderActions();
       renderHand();
@@ -2624,11 +2622,9 @@ function renderOfferComposer(box, mode = "offer") {
       const other = w === "give" ? "want" : "give";
       const on = !draft.open[w];
       draft.open[w] = on;
-      if (on) {
-        draft[w] = [0, 0, 0, 0, 0];
-        // 両側とも相手任せでは何も動かない。反対側の「?」は下ろす
-        draft.open[other] = false;
-      }
+      // 札と一緒に使える。「小麦1 と、あと何か」を出せる。
+      // 反対側の「?」だけは下ろす（両側とも相手任せでは何も動かない）
+      if (on) draft.open[other] = false;
       renderActions();
       renderHand();
     });
@@ -3350,14 +3346,31 @@ function renderActions() {
   abx.classList.toggle("over-hand", overHand);
   // 🔴 下端は**手札の実寸から**決める。決め打ちの px にすると、
   //    手札の高さが画面の大きさで変わったときに札の上に被る（実際に被った）
-  if (overHand && !abx.hidden) {
-    const h = document.getElementById("handbar");
-    const r = h ? h.getBoundingClientRect() : null;
-    if (r && r.height) abx.style.setProperty("--abx-bottom", `${Math.round(innerHeight - r.top + 8)}px`);
-    else abx.style.removeProperty("--abx-bottom");
-  } else {
-    abx.style.removeProperty("--abx-bottom");
-  }
+  placeBand();
+}
+
+/**
+ * 下の帯の上端を測って CSS に渡す。
+ *
+ * 🔴 帯の上に浮かせる物は**すべてこれを基準にする**。決め打ちの px にすると、
+ * 手札やボタンの大きさを変えたときに置き去りになって浮く（実際にそうなった）。
+ *
+ * 左（手札の上）と右（ボタンの上）で高さが違うので、基準は 2 つ持つ:
+ *   `--band-hand` = 手札の上端  … 出目の分布・知らせ・捨て札や交易の卓
+ *   `--band-btn`  = ボタンの上端 … サイコロ・置く前の確認
+ */
+function placeBand() {
+  const app = document.getElementById("app");
+  if (!app || !innerHeight) return;
+  const z = parseFloat(getComputedStyle(app).zoom) || 1;
+  const put = (name, id, fallback) => {
+    const e = document.getElementById(id);
+    const r = e ? e.getBoundingClientRect() : null;
+    const v = r && r.height ? Math.round((innerHeight - r.top) / z) : fallback;
+    app.style.setProperty(name, `${Math.max(0, v)}px`);
+  };
+  put("--band-hand", "handbar", 126);
+  put("--band-btn", "actions", 98);
 }
 
 /** 対案を組んでいる最中か。押されるまでは小さいカードだけ出す */
@@ -3394,8 +3407,20 @@ function askBlock(pid, anchor) {
       <button class="ask-no">やめる</button>
       <button class="ask-yes">${on ? "解除する" : "断る"}</button>
     </div>`;
-  box.style.left = `${Math.round(r.left - box.offsetWidth - 10)}px`;
-  box.style.top = `${Math.round(Math.min(r.top, innerHeight - box.offsetHeight - 10))}px`;
+  // 🔴 `position: fixed` でも、`zoom` を掛けた中では**座標が倍率で拡がる**。
+  //    画面の実座標をそのまま入れると、倍率の分だけ外へ飛んで見切れる（実際に切れた）。
+  //    倍率で割って「画面の中に必ず収まる」ところまで寄せる。
+  const z = parseFloat(getComputedStyle(document.getElementById("app")).zoom) || 1;
+  // 窓の大きさが取れない時（描画されていない）は寄せない。0 で挟むと隅に潰れる
+  const vw = (innerWidth || 1e6) / z, vh = (innerHeight || 1e6) / z;
+  const bw = box.offsetWidth, bh = box.offsetHeight;
+  // まず相手の欄の左隣に。そこが窮屈なら右隣へ回す
+  let left = r.left / z - bw - 10;
+  if (left < 8) left = r.right / z + 10;
+  left = Math.max(8, Math.min(left, vw - bw - 8));
+  const top = Math.max(8, Math.min(r.top / z, vh - bh - 8));
+  box.style.left = `${Math.round(left)}px`;
+  box.style.top = `${Math.round(top)}px`;
   const close = () => { box.hidden = true; box.innerHTML = ""; };
   box.querySelector(".ask-no").addEventListener("click", close);
   box.querySelector(".ask-yes").addEventListener("click", () => {
@@ -3702,9 +3727,11 @@ function renderActionBar(bar) {
   const SVG_DEV = `<svg viewBox="0 0 48 48">
     <rect x="12" y="7" width="24" height="34" rx="4" fill="#2c4257"/>
     <text x="24" y="32" text-anchor="middle" font-size="21" font-weight="700" fill="#fff">?</text></svg>`;
+  // 🔴 交易は**サイコロを振ってから**。規則でもそうなっていて（`rolled` が要る）、
+  //    押せてしまうと卓だけ開いて「その条件では出せません」で弾かれる
   bar.appendChild(abtn({
-    svg: SVG_TRADE, title: "交易",
-    disabled: !my || busy || !hasCards,
+    svg: SVG_TRADE, title: state.rolled ? "交易" : "交易（サイコロを振ってから）",
+    disabled: !my || busy || !hasCards || !state.rolled,
     onClick: () => { openMenu = "OFFER_TRADE"; render(); },
   }));
   bar.appendChild(abtn({

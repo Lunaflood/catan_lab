@@ -950,9 +950,8 @@ header { display: none !important; }
 #app #actionbox {
   left: auto !important;
   right: 12px !important;
-  /* 操作ボタンは 100px（低い画面で 92px）＋下の余白 6px。その上に置く。
-     🔴 inline style は `!important` に勝てないので、JS からは変数で入れる */
-  bottom: var(--abx-bottom, 112px) !important;
+  /* 押したボタンの真上。高さは JS が測った実寸から入る */
+  bottom: calc(var(--band-btn, 98px) + 8px) !important;
   max-width: calc(100% - 24px);
 }
 
@@ -1034,27 +1033,32 @@ header { display: none !important; }
 #app #actionbox.over-hand {
   left: 12px !important;
   right: auto !important;
+  /* 手札を選ぶ卓なので、手札の上端に合わせる */
+  bottom: calc(var(--band-hand, 126px) + 8px) !important;
 }
 
 /* ---------------------------------------------------------------- 記号ボタンの中身を真ん中へ
    ✓ ✗ ✎ のような**字で描いた記号**は、箱の中で baseline に乗るので下にずれる。
    日本語のフォントは記号の下に余白を多く取るため、見た目はさらに下がる。
    grid で中央に置き、行の高さを 1 に固定して、字の分の余白を出さない。 */
+/* 🔴 grid（`place-items:center`）では中身が中央に来ないことがある。
+   同じ指定・同じ構造の 2 つのボタンで、片方の絵だけ 18px ずれた（実測）。
+   flex の中央寄せは 1 つの子に対して確実に効くので、そちらで揃える。 */
 #app #offers .oc-b,
 #app #actionbox .dc-no, #app #actionbox .dc-yes,
 #app #actionbox .tc-ok, #app #actionbox .tc-cancel,
 #app #actionbox .abx-ok {
-  display: grid !important;
-  place-items: center !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   line-height: 1 !important;
   text-align: center;
   font-family: "Segoe UI Symbol", "Segoe UI", system-ui, sans-serif;
 }
-/* 中身が字でも絵でも、同じ 1 マスに収める（重ならないよう明示する） */
 #app #offers .oc-b > *,
 #app #actionbox .dc-no > *, #app #actionbox .dc-yes > *,
 #app #actionbox .tc-ok > *, #app #actionbox .tc-cancel > *,
-#app #actionbox .abx-ok > * { grid-area: 1 / 1; }
+#app #actionbox .abx-ok > * { flex: 0 0 auto; }
 
 /* 手札の上にパネルが出ている間は、出目の分布は引っ込める。
    同じ左下に居るので重なるうえ、選んでいる最中に読む物ではない。
@@ -1122,7 +1126,6 @@ header { display: none !important; }
   stroke: #17313f; stroke-width: 2;
   transition: filter var(--t-press);
 }
-#app #board .buildask .no  .ba-c { fill: #f0b6ad; }
 #app #board .buildask .yes .ba-c { fill: #9fe3b8; }
 #app #board .buildask .ba-t {
   font-size: 19px; font-weight: 800; fill: #17313f;
@@ -1145,3 +1148,23 @@ header { display: none !important; }
    下の帯は左に手札・右にボタンがあるだけで真ん中は空いているので、
    盤の裾が少し掛かっても読みは邪魔されない。 */
 #boardwrap { padding: 2px 12px 118px !important; }
+
+/* ---------------------------------------------------------------- 帯の上に浮く物
+   🔴 下の帯（手札・操作ボタン）の上端を `--band` として JS が入れる。
+   決め打ちの px にすると、手札の高さを変えたときに置き去りになって浮く。 */
+#app #distbox { bottom: calc(var(--band-hand, 126px) + 6px) !important; }
+#app #toast   { bottom: calc(var(--band-hand, 126px) + 6px) !important; }
+#app #dicetray { bottom: calc(var(--band-btn, 98px) + 10px) !important; }
+
+/* ---------------------------------------------------------------- 交易の決定ボタン
+   🔴 `width` を書いても、flex の中では**縮む**（既定で flex-shrink:1）。
+   実測で 44px 指定のボタンが 28px まで潰れ、中の絵がはみ出して
+   左下にずれて見えていた。縮まない指定にする。 */
+#app #actionbox .tc-foot { align-items: center; flex-wrap: nowrap; }
+#app #actionbox .tc-ok,
+#app #actionbox .tc-cancel {
+  flex: 0 0 44px !important;
+  width: 44px !important; height: 44px !important;
+  min-width: 44px; min-height: 44px;
+}
+#app #actionbox .tc-ok svg { display: block; width: 24px !important; height: 24px !important; }
