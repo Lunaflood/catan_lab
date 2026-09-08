@@ -1382,3 +1382,32 @@ header { display: none !important; }
 #app #handbar .hdev { position: relative; }
 /* 枚数のバッジは資源の札と**同じ物**を使う（上の共通指定に .hdev を足してある）。
    ここで別に書くと、画面の大きさごとの調整から取り残されて小さいままになる */
+
+/* ---------------------------------------------------------------- プレイヤー欄をさらに詰める
+   余白が残っていた分をログに回す。**字は縮めず**、絵と行間だけ詰める。 */
+/* 🔴 前に書いた `height: 90px !important` が残っていると、詰めても行が縮まない。
+   高さは中身に任せる（`auto`）。 */
+#app #players-panel .pl { padding: 3px 10px !important; height: auto !important; min-height: 0 !important; }
+#app #players-panel .pl.self { height: auto !important; min-height: 0 !important; }
+#app #players-panel .pl.active { height: auto !important; min-height: 0 !important; }
+/* 名前まわりの縦積みを詰める（丸→名前→役割の 3 段） */
+#app #players-panel .pl .pscore .vp { width: 36px !important; height: 36px !important;
+  font-size: 18px !important; line-height: 36px !important; -webkit-text-stroke: 2px #fff; }
+#app #players-panel .pl.active .pscore .vp { width: 42px !important; height: 42px !important;
+  font-size: 21px !important; line-height: 42px !important; }
+#app #players-panel .pl .pscore .name { font-size: 12px !important; }
+#app #players-panel .pl.active .pscore .name { font-size: 13px !important; }
+#app #players-panel .pl .pscore .me { font-size: 9px !important; }
+/* 持ち物と残りの 2 段。絵を小さくして行間を詰める（数字はそのまま） */
+#app #players-panel .pl .pinfo { gap: 8px; }
+#app #players-panel .pl .pmain { display: flex; flex-direction: column; gap: 1px; }
+#app #players-panel .pl .stats { gap: 9px; line-height: 1; }
+#app #players-panel .pl .stats svg { width: 20px !important; height: 20px !important; }
+#app #players-panel .pl .left { line-height: 1; }
+#app #players-panel .pl .left svg { width: 16px !important; height: 16px !important; }
+#app #players-panel .pl .mydev { margin-top: 0; }
+#app #players-panel .pl .mydev .dv { padding: 1px 6px; }
+#app #players-panel .pl .ptags .tag { padding: 3px 9px; }
+
+/* 空いた分はログへ */
+#app #log { max-height: none !important; flex: 1 1 auto !important; min-height: 120px !important; }
