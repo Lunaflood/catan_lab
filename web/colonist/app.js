@@ -5372,8 +5372,16 @@ function boot() {
 
   loadLobby();
   document.getElementById("hstart").addEventListener("click", startFromHome);
+  // 🔴 名前の欄で Enter を押しても**始めない**。
+  //    名前を打ち終えた合図で対局が始まってしまい、人数や相手を決める前に
+  //    盤へ入ってしまう。ここでは名前を確定して離れるだけにする。
   document.getElementById("myname").addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") startFromHome();
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    lobby.name = ev.currentTarget.value.trim() || "あなた";
+    saveLobby();
+    ev.currentTarget.blur();
+    renderHome();
   });
 
   // 盤に入るのは「はじめる」を押してから。まず待機所を出す
