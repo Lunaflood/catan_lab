@@ -73,6 +73,13 @@ pub struct Room {
     pub evseq: u64,
     /// 控えの通し番号。取りに来た人が「どこまで受け取ったか」を言えるようにする
     pub msgseq: u64,
+    /// この対局で指された手の控え（`act` の電文そのまま）。
+    ///
+    /// 🔴 **読み直しても対局が消えないため**に持つ。端末が繋ぎ直してきたら、
+    /// 開始の合図と一緒にこれを全部渡せば、決定的なエンジンが同じ盤を作り直す。
+    pub history: Vec<String>,
+    /// 開始の合図（席ごとに中身が違うので人数ぶん持つ）
+    pub start_msgs: Vec<String>,
 }
 
 pub fn now_ms() -> u128 {
@@ -129,6 +136,8 @@ impl Room {
             last_touch: now_ms(),
             evseq: 0,
             msgseq: 0,
+            history: Vec::new(),
+            start_msgs: Vec::new(),
         }
     }
 
@@ -347,7 +356,32 @@ impl Room {
                 ),
             ));
         }
+        // 席ごとの開始の合図は取っておく。繋ぎ直してきた人へもう一度渡すため
+        self.history.clear();
+        self.start_msgs = vec![String::new(); self.members.len()];
         for (mi, msg) in msgs {
+            if let Some(slot) = self.start_msgs.get_mut(mi) {
+                *slot = msg.clone();
+            }
+            self.send_to(mi, &msg);
+        }
+    }
+
+    /// 繋ぎ直してきた人へ、対局を作り直すのに要る物を全部渡す。
+    ///
+    /// 盤面は送らない ── エンジンが決定的なので、
+    /// **開始の合図＋指された手の並び**があれば端末が同じ盤を作れる。
+    pub fn resend_game(&mut self, mi: usize) {
+        if !matches!(self.phase, Phase::Playing | Phase::Over) {
+            return;
+        }
+        let start = self.start_msgs.get(mi).cloned().unwrap_or_default();
+        if start.is_empty() {
+            return;
+        }
+        self.send_to(mi, &start);
+        let hist = self.history.clone();
+        for msg in hist {
             self.send_to(mi, &msg);
         }
     }
@@ -368,6 +402,7 @@ impl Room {
         let turn = g.turn;
         let to_act = g.to_act;
         let msg = format!("{{\"t\":\"act\",{echo},\"turn\":{turn},\"toAct\":{to_act}}}");
+        self.history.push(msg.clone());
         self.broadcast(&msg);
         if over {
             self.phase = Phase::Over;
@@ -468,9 +503,9 @@ impl Room {
         let over = g.is_over();
         let turn = g.turn;
         let to_act = g.to_act;
-        self.broadcast(&format!(
-            "{{\"t\":\"act\",\"i\":{index},\"turn\":{turn},\"toAct\":{to_act}}}"
-        ));
+        let msg = format!("{{\"t\":\"act\",\"i\":{index},\"turn\":{turn},\"toAct\":{to_act}}}");
+        self.history.push(msg.clone());
+        self.broadcast(&msg);
         if over {
             self.phase = Phase::Over;
             self.broadcast("{\"t\":\"over\"}");

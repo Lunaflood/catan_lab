@@ -280,7 +280,10 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
                 };
                 room.members[mi].seen_at = rooms::now_ms();
                 if since == 0 {
+                    // 初めて（＝読み直した直後かもしれない）。
+                    // 対局中なら、作り直すのに要る物を丸ごと渡す
                     room.send_lobby();
+                    room.resend_game(mi);
                 }
             }
 

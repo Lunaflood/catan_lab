@@ -65,6 +65,10 @@ struct Session {
     seq: u32,
     /// 出来事の順序番号（v2 CPU への配信用）
     evseq: u64,
+    /// 直前に指した手が、その時の合法手一覧で何番目だったか。
+    /// **対局の再現**に使う ── CPU の手も番号で控えておけば、
+    /// ボットの中身がどうであれ同じ試合をなぞり直せる
+    last_index: i32,
 }
 
 thread_local! {
@@ -179,6 +183,7 @@ pub extern "C" fn game_new(
             last: LastAction::default(),
             seq: 0,
             evseq: 0,
+            last_index: -1,
         })
     });
     refresh();
@@ -217,6 +222,7 @@ pub extern "C" fn apply_index(i: u32) -> u32 {
         let Some(&a) = sess.actions.get(i as usize) else {
             return 0;
         };
+        sess.last_index = i as i32;
         let before = sess.game.board.robber;
         let hands = hands_of(&sess.game);
         let rec = apply_notify(sess, a);
@@ -224,6 +230,15 @@ pub extern "C" fn apply_index(i: u32) -> u32 {
         sess.game.legal_actions_into(&mut sess.actions);
         1
     })
+}
+
+/// 直前に指した手が、その時の合法手一覧で何番目だったか（無ければ -1）。
+///
+/// 対局を控えて再現するために使う。CPU の手もこの番号で控えておけば、
+/// ボットの中身に頼らずに同じ試合をなぞり直せる。
+#[no_mangle]
+pub extern "C" fn last_action_index() -> i32 {
+    SESSION.with(|s| s.borrow().as_ref().map_or(-1, |sess| sess.last_index))
 }
 
 /// CPU に 1 手指させる。指したら 1、手番が人間なら 0。
@@ -245,6 +260,8 @@ pub extern "C" fn bot_step() -> u32 {
             let view = View::new(&sess.game, seat);
             sess.bots[seat as usize].decide(&view, &sess.actions)
         };
+        // 何番目を選んだかを控える（対局の再現に使う）
+        sess.last_index = sess.actions.iter().position(|x| *x == a).map_or(-1, |i| i as i32);
         let before = sess.game.board.robber;
         let hands = hands_of(&sess.game);
         let rec = apply_notify(sess, a);

@@ -1138,3 +1138,10 @@ header { display: none !important; }
 #app #handbar .hcard { height: 94px !important; }
 #app #handbar .hcard .hglyph svg { width: 42px; height: 42px; }
 #app #handbar .hdev { min-height: 94px; }
+
+/* ---------------------------------------------------------------- 盤を大きく
+   盤は**縦で決まる**（横は 833px 使えるのに、高さが 542px しか無かった）。
+   手札を縮めた分だけ下の余白を詰めて、盤にまわす。
+   下の帯は左に手札・右にボタンがあるだけで真ん中は空いているので、
+   盤の裾が少し掛かっても読みは邪魔されない。 */
+#boardwrap { padding: 2px 12px 118px !important; }

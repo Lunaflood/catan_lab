@@ -62,7 +62,36 @@ function readJson(ptr) {
 async function loadWasm() {
   const res = await fetch("catan_wasm.wasm");
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
-  wasm = instance.exports;
+  wasm = wrapForJournal(instance.exports);
+}
+
+/**
+ * 画面で組み立てた手（交易・捨て札）を、控えに残るように包む。
+ *
+ * 呼ぶ場所が 8 か所に散らばっているので、**入口を 1 つにして包む**。
+ * 呼ぶ側を一つずつ直すと、後から増えた 1 か所を控え忘れて
+ * 「その手だけ再現できない」という気づきにくい壊れ方をする。
+ */
+function wrapForJournal(w) {
+  const kinds = {
+    offer_custom: "offer", counter_custom: "counter", counter_alt: "alt",
+    counter_alt_remove: "altRemove", counter_finish: "finish",
+    discard_custom: "discard", maritime_bulk: "maritime",
+  };
+  // 🔴 wasm の exports は書き換えできない（差し替えようとすると投げる）。
+  //    中身を写した器を作って、その上で差し替える
+  const out = {};
+  for (const k of Object.keys(w)) out[k] = w[k];
+  for (const [fn, k] of Object.entries(kinds)) {
+    const orig = w[fn];
+    if (typeof orig !== "function") continue;
+    out[fn] = (...a) => {
+      const r = orig(...a);
+      if (r === 1) noteMove({ k, a });
+      return r;
+    };
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- SVG の小道具
@@ -4118,7 +4147,7 @@ function play(i) {
   // （成立・取り下げ・手番終了のどれであっても、その意思で先へ進んでいる）
   reopenOffer = false;
   clearDraft();
-  wasm.apply_index(i);
+  if (wasm.apply_index(i) === 1) noteMove({ i });
   refreshState();
   render();
   scheduleBot();
@@ -4133,6 +4162,9 @@ function scheduleBot() {
   const wait = state.last && state.last.kind === "ROLL" ? 1020 : (watching ? 110 : 430);
   botTimer = setTimeout(() => {
     if (wasm.bot_step() === 1) {
+      // 何番目を選んだかで控える。ボットの中身に頼らずになぞり直せる
+      const idx = wasm.last_action_index();
+      if (idx >= 0) noteMove({ i: idx });
       refreshState();
       render();
       scheduleBot();
@@ -4197,6 +4229,9 @@ function netSend(payload) {
 }
 
 /** サーバから届いた手を、自分のエンジンに入れる */
+/** まとめて届いた手をなぞっている最中か（1 手ごとには描き直さない） */
+let netBulk = false;
+
 function netApply(m) {
   const g = m.g || [0, 0, 0, 0, 0];
   const w = m.w || [0, 0, 0, 0, 0];
@@ -4214,6 +4249,7 @@ function netApply(m) {
     // ここがずれると以降が全部おかしくなる。黙って進めない
     net.err = "盤面がサーバとずれました。ホームに戻ってやり直してください";
   }
+  if (netBulk) return;   // まとめてなぞっている間は、最後に一度だけ描く
   refreshState();
   // 手番の食い違いは、ずれの一番早い兆候
   if (typeof m.toAct === "number" && state.toAct !== m.toAct) {
@@ -4260,7 +4296,22 @@ async function netLoop(gen) {
         if (!document.getElementById("home").hidden) renderHome();
       }
       if (d.seq != null) net.since = d.seq;
-      for (const m of d.msgs || []) netHandle(m);
+      const msgs = d.msgs || [];
+      // 読み直した直後は、対局まるごとが一度に届く。
+      // 1 手ごとに描き直すと重いうえ、済んだ手の音と動きが一斉に鳴る
+      netBulk = msgs.length > 3;
+      for (const m of msgs) netHandle(m);
+      if (netBulk) {
+        netBulk = false;
+        refreshState();
+        // なぞり直しの分の音と動きは出さない。「いま」に合わせてから描く
+        lastSeq = state.last ? state.last.seq : 0;
+        lastPieces = new Set(state.buildings.map((b) => b.node));
+        lastDiceKey = "";
+        sfxPrev = null;
+        prevHandFx = null;
+        render();
+      }
     } catch (e) {
       if (net.gen !== gen) return;
       fails++;
@@ -4288,6 +4339,7 @@ function netHandle(m) {
         break;
       case "start": {
         net.seat = m.yourSeat;
+        saveGameSoon();   // 読み直したら、この部屋の続きに戻れるように
         document.getElementById("home").hidden = true;
         document.getElementById("home").style.display = "none";
         const app = document.getElementById("app");
@@ -4341,6 +4393,7 @@ async function netJoin(code) {
 }
 
 function netLeave() {
+  dropSave();
   // 世代を進めると、走っている取りに行きの輪はそこで止まる
   net = { on: false, room: null, token: null, seat: -1, members: [], cpus: [], players: 4,
           err: "", live: false, me: -1, since: 0, gen: (net.gen || 0) + 1 };
@@ -4406,6 +4459,136 @@ function saveLobby() {
     localStorage.setItem("catan.lobby", JSON.stringify(lobby));
   } catch {
     // 覚えられなくても、この対局の間は効く
+  }
+}
+
+/* ---------------------------------------------------------------- 続きから
+
+   🔴 **読み直しても対局が消えないようにする**。
+   タブを間違えて閉じた・戻るを押した・端末が寝た ── どれも普通に起きるのに、
+   そのたび最初からでは、長い試合は遊べない。
+
+   盤面を丸ごと保存はしない。**エンジンが決定的**なので、
+   種と「何番目の手を指したか」の並びさえあれば同じ試合をなぞり直せる。
+   CPU の手も番号で控える（`last_action_index`）ので、
+   ボットの中身がどう変わっても、控えた試合はそのまま再現できる。 */
+
+const SAVE_KEY = "catan.game";
+/** この対局で指された手の控え。番号か、画面で組み立てた手の中身 */
+let journal = [];
+/** 保存の元になる、対局の作り方 */
+let gameSetup = null;
+let saveTimer = null;
+
+function saveGameSoon() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveGame, 250);
+}
+
+function saveGame() {
+  try {
+    // オンラインは**手順をサーバが持っている**。控えるのは「どの部屋の誰か」だけ。
+    // 読み直したら、その鍵で入り直して手順を送り直してもらう
+    if (net.on && net.room && net.token) {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, online: { room: net.room, token: net.token } }));
+      return;
+    }
+    if (!gameSetup || watching) return;
+    if (state && state.winner !== null) { localStorage.removeItem(SAVE_KEY); return; }
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, setup: gameSetup, journal }));
+  } catch {
+    // 覚えられなくても、この対局の間は遊べる
+  }
+}
+
+function dropSave() {
+  clearTimeout(saveTimer);
+  try { localStorage.removeItem(SAVE_KEY); } catch {}
+}
+
+/** 控えを 1 手ぶん進める。盤を動かす wasm の呼び出しから必ず通す */
+let replaying = false;
+function noteMove(entry) {
+  if (replaying) return;   // なぞり直しの最中は積まない（同じ手が二重になる）
+  journal.push(entry);
+  saveGameSoon();
+}
+
+/**
+ * 控えから対局をなぞり直す。戻り値は成功したか。
+ *
+ * 途中で 1 手でも合わなければ**やり直さずに諦める**。
+ * 中途半端に進んだ盤を出す方が、最初からより悪い。
+ */
+function restoreGame() {
+  let save;
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    save = JSON.parse(raw);
+  } catch { return false; }
+  if (!save || save.v !== 1) return false;
+  // オンラインの続き。鍵はそのまま使えるので、取りに行く輪を回し直すだけ。
+  // 開始の合図と手順はサーバが送り直してくれる
+  if (save.online && save.online.room && save.online.token) {
+    net.on = true;
+    net.room = save.online.room;
+    net.token = save.online.token;
+    netOpen();
+    return "online";
+  }
+  if (!save.setup || !Array.isArray(save.journal) || !save.journal.length) return false;
+
+  const su = save.setup;
+  try {
+    watching = false;
+    mySeat = su.mySeat;
+    seatNames = su.names.slice();
+    seatLevel = su.levels.slice();
+    seatHuman = [];
+    clearDraft();
+    wasm.game_new(su.boardSeed, su.diceSeed, su.devSeed, su.stealSeed, su.players,
+                  su.humansMask, su.levelBits, su.askLast);
+    board = readJson(wasm.board_json());
+    replaying = true;
+    for (const e of save.journal) {
+      if (!replayOne(e)) throw new Error("控えが合わない");
+    }
+    replaying = false;
+  } catch {
+    replaying = false;
+    dropSave();
+    return false;
+  }
+  gameSetup = su;
+  journal = save.journal;
+  refreshState();
+  // なぞり直しの最中は音も動きも出さない。ここで「いま」に合わせる
+  lastSeq = state.last ? state.last.seq : 0;
+  lastPieces = new Set(state.buildings.map((b) => b.node));
+  lastDiceKey = "";
+  sfxPrev = null;
+  prevHandFx = null;
+  // 盗賊が資源のマスに居る＝一度は動かされている（砂漠に居るなら初期位置のまま）
+  robberEverMoved = !!(board.tiles[state.robber] && board.tiles[state.robber].resource);
+  drawBoard();
+  render();
+  scheduleBot();
+  return true;
+}
+
+function replayOne(e) {
+  if (e.i !== undefined) return wasm.apply_index(e.i) === 1;
+  const a = e.a || [];
+  switch (e.k) {
+    case "offer": return wasm.offer_custom(...a) === 1;
+    case "counter": return wasm.counter_custom(...a) === 1;
+    case "alt": return wasm.counter_alt(...a) === 1;
+    case "altRemove": return wasm.counter_alt_remove(...a) === 1;
+    case "finish": return wasm.counter_finish() === 1;
+    case "discard": return wasm.discard_custom(...a) === 1;
+    case "maritime": return wasm.maritime_bulk(...a) === 1;
+    default: return false;
   }
 }
 
@@ -4620,6 +4803,10 @@ function renderOnlineBox() {
 function showHome() {
   clearTimeout(botTimer);
   watching = false;
+  // 待機所に戻る＝この対局は畳む。控えも捨てる。
+  // ⚠ オンラインで入り直した直後はまだ部屋に居るので、鍵の控えは残す
+  gameSetup = null;
+  if (!net.on) dropSave();
   const home = document.getElementById("home");
   home.hidden = false;
   home.style.display = "flex";
@@ -4719,10 +4906,22 @@ function newGame(newSeed, online) {
   const askLast = online
     ? online.humans.reduce((m, h, s) => m | (h ? 1 << s : 0), 0)
     : watching ? 0 : 1 << mySeat;
+  const humansMask = watching ? 0 : 1 << mySeat;
   wasm.game_new(
     boardSeed, diceSeed, devSeed, stealSeed, players,
-    watching ? 0 : 1 << mySeat, levels, askLast
+    humansMask, levels, askLast
   );
+  // 「続きから」のための控え。盤面ではなく**作り方**だけを持つ
+  journal = [];
+  gameSetup = online || watching ? null : {
+    boardSeed, diceSeed, devSeed, stealSeed, players,
+    mySeat, humansMask, levelBits: levels, askLast,
+    names: seatNames.slice(), levels: seatLevel.slice(),
+  };
+  // オンラインは `gameSetup` を持たない（手順はサーバ側）。
+  // ここで消すと、開始の合図で控えた鍵まで消えてしまう
+  if (!gameSetup && !online) dropSave();
+  else saveGameSoon();
   board = readJson(wasm.board_json());
   refreshState();
   drawBoard();
@@ -4997,6 +5196,23 @@ function boot() {
   loadWasm()
     .then(() => {
       const app = document.getElementById("app");
+      // 読み直しただけなら、控えから続きに戻す。
+      // 戻せなければ（控えが無い・合わない）いつも通り待機所を出す
+      const joining = new URLSearchParams(location.search).get("join");
+      const back = joining ? false : restoreGame();
+      if (back === "online") {
+        // 手順はサーバから届く。届くまでは待機所を出しておく
+        if (app) app.hidden = true;
+        showHome();
+        return;
+      }
+      if (back) {
+        document.getElementById("home").hidden = true;
+        document.getElementById("home").style.display = "none";
+        if (app) app.hidden = false;
+        toast("前の対局の続きから始めます");
+        return;
+      }
       if (app) app.hidden = true;
       showHome();
     })
