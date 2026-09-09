@@ -1,0 +1,125 @@
+{
+  "docs/cpu-v4/runs/final4p-*.txt": {
+    "games": 480,
+    "wins": 241,
+    "unfinished": 0,
+    "win_rate": 0.5020833333333333,
+    "wilson95": [
+      0.4575152429529004,
+      0.5466183424675691
+    ],
+    "max_block_p95_ms": 67.895,
+    "max_ms": 2356.842,
+    "blocks": [
+      {
+        "path": "docs/cpu-v4/runs\\final4p-0.txt",
+        "games": 120,
+        "finished": 120,
+        "wins": 60,
+        "p50_ms": 1.647,
+        "p95_ms": 62.99,
+        "max_ms": 2356.842
+      },
+      {
+        "path": "docs/cpu-v4/runs\\final4p-1.txt",
+        "games": 120,
+        "finished": 120,
+        "wins": 62,
+        "p50_ms": 1.66,
+        "p95_ms": 61.027,
+        "max_ms": 1558.162
+      },
+      {
+        "path": "docs/cpu-v4/runs\\final4p-2.txt",
+        "games": 120,
+        "finished": 120,
+        "wins": 57,
+        "p50_ms": 1.604,
+        "p95_ms": 67.895,
+        "max_ms": 1312.021
+      },
+      {
+        "path": "docs/cpu-v4/runs\\final4p-3.txt",
+        "games": 120,
+        "finished": 120,
+        "wins": 62,
+        "p50_ms": 1.655,
+        "p95_ms": 63.86,
+        "max_ms": 1426.035
+      }
+    ]
+  },
+  "docs/cpu-v4/runs/final3p-*.txt": {
+    "games": 240,
+    "wins": 127,
+    "unfinished": 0,
+    "win_rate": 0.5291666666666667,
+    "wilson95": [
+      0.46605504773305967,
+      0.5913593069370162
+    ],
+    "max_block_p95_ms": 40.166,
+    "max_ms": 758.2,
+    "blocks": [
+      {
+        "path": "docs/cpu-v4/runs\\final3p-0.txt",
+        "games": 60,
+        "finished": 60,
+        "wins": 38,
+        "p50_ms": 1.193,
+        "p95_ms": 39.726,
+        "max_ms": 647.937
+      },
+      {
+        "path": "docs/cpu-v4/runs\\final3p-1.txt",
+        "games": 60,
+        "finished": 60,
+        "wins": 29,
+        "p50_ms": 1.133,
+        "p95_ms": 34.027,
+        "max_ms": 517.108
+      },
+      {
+        "path": "docs/cpu-v4/runs\\final3p-2.txt",
+        "games": 60,
+        "finished": 60,
+        "wins": 28,
+        "p50_ms": 1.099,
+        "p95_ms": 40.166,
+        "max_ms": 758.2
+      },
+      {
+        "path": "docs/cpu-v4/runs\\final3p-3.txt",
+        "games": 60,
+        "finished": 60,
+        "wins": 32,
+        "p50_ms": 1.146,
+        "p95_ms": 36.157,
+        "max_ms": 555.184
+      }
+    ]
+  },
+  "docs/cpu-v4/runs/final-v3.txt": {
+    "games": 120,
+    "wins": 60,
+    "unfinished": 0,
+    "win_rate": 0.5,
+    "wilson95": [
+      0.41193870541108385,
+      0.5880612945889161
+    ],
+    "max_block_p95_ms": 70.499,
+    "max_ms": 2147.618,
+    "blocks": [
+      {
+        "path": "docs/cpu-v4/runs/final-v3.txt",
+        "games": 120,
+        "finished": 120,
+        "wins": 60,
+        "p50_ms": 1.794,
+        "p95_ms": 70.499,
+        "max_ms": 2147.618
+      }
+    ]
+  }
+}

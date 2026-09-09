@@ -904,3 +904,39 @@ fn 欲しい物だけの相談も出せる() {
     assert_eq!(g.prompt, Prompt::DecideTrade);
     assert!(!g.legal_actions().iter().any(|a| matches!(a, Action::AcceptTrade)));
 }
+
+
+#[test]
+fn open_counter_must_not_be_accepted_as_a_free_gift() {
+    for (give, want) in [([0,1,0,0,0], [0;5]), ([0;5], [1,0,0,0,0])] {
+        let mut g = ready(GameConfig::default());
+        set_hand(&mut g, 0, [3,0,0,0,0]);
+        set_hand(&mut g, 1, [0,3,0,0,0]);
+        g.apply(Action::OfferTrade { give: [1,0,0,0,0], want: [0,1,0,0,0] });
+        g.apply(Action::CounterOffer { give, want });
+        g.apply(Action::RejectTrade);
+        g.apply(Action::RejectTrade);
+        assert!(!g.can_apply(&Action::AcceptCounter { from: 1, alt: 0 }), "An open counter is a question, not a gift");
+    }
+}
+
+#[test]
+fn many_custom_proposals_do_not_overflow_the_cpu_offer_counter() {
+    let mut g = ready(GameConfig { turn_time_limit_ms: None, ..GameConfig::default() });
+    set_hand(&mut g, 0, [1,0,0,0,0]);
+    for _ in 0..300 {
+        let a = Action::OfferTrade { give: [1,0,0,0,0], want: [0,1,0,0,0] };
+        assert!(g.can_apply(&a));
+        g.apply(a);
+        for _ in 0..3 { g.apply(Action::RejectTrade); }
+    }
+    assert_eq!(g.offers_this_turn, u8::MAX);
+    assert!(!g.legal_actions().iter().any(|a| matches!(a, Action::OfferTrade { .. })));
+}
+
+#[test]
+fn oversized_trade_bundles_are_rejected_without_overflow() {
+    let mut g = ready(GameConfig::default());
+    set_hand(&mut g, 0, [1,0,0,0,0]);
+    assert!(!g.can_apply(&Action::OfferTrade { give: [1,0,0,0,0], want: [0,255,255,255,255] }));
+}

@@ -1576,3 +1576,7 @@ aside > div .chip, #drawer .chip { font-size: 12px; padding: 1px 7px 1px 4px; ga
   margin-bottom: 10px; padding: 9px 12px; border-radius: 10px; font-size: 13px;
   color: #8c1d0a; background: rgba(208, 42, 22, .12); border: 1px solid rgba(208, 42, 22, .3);
 }
+
+/* 相手を選んでいる間も盗賊の移動先を明示する。 */
+.tilehint.chosen .spot-tile { fill: rgba(255, 213, 80, .25); stroke: #ffd550; stroke-width: 3; }
+.tilehint.chosen .spot-token { stroke: #ffd550; }

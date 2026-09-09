@@ -153,8 +153,9 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
                 return;
             }
             let token = new_token();
+            // Joining replaces a CPU seat; measure the table size before adding the member.
+            let want = room.players().max(room.members.len() + 1);
             room.members.push(Member::new(token.clone(), name));
-            let want = room.players().max(room.members.len());
             room.balance(want);
             room.send_lobby();
             http::send_json(stream, &format!("{{\"room\":\"{code}\",\"token\":\"{token}\"}}"));
@@ -220,6 +221,11 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
                 http::send_err(stream, "409 Conflict", "まだ席がありません");
                 return;
             };
+            let expected = http::field_num(&req.body, "fp").and_then(|v| u32::try_from(v).ok());
+            if let Err(e) = room.check_client_state(expected) {
+                http::send_err(stream, "409 Conflict", e);
+                return;
+            }
             // 一覧から番号で指す手と、画面で組み立てた手（交易・捨て札）の 2 通り
             let r = if let Some(kind) = http::field(&req.body, "k") {
                 let g = http::field_bundle(&req.body, "g").unwrap_or([0; 5]);
@@ -228,8 +234,11 @@ fn api(stream: &mut TcpStream, rest: &str, req: &http::Request, rooms: &Rooms) {
                 let kind = kind.to_string();
                 room.apply_custom(seat, &kind, g, w, n)
             } else {
-                let i = http::field_num(&req.body, "i").unwrap_or(-1);
-                room.apply_index(seat, i.max(0) as usize)
+                let Some(i) = http::field_num(&req.body, "i").and_then(|v| usize::try_from(v).ok()) else {
+                    http::send_err(stream, "400 Bad Request", "手番号が正しくありません");
+                    return;
+                };
+                room.apply_index(seat, i)
             };
             match r {
                 Ok(()) => http::send_json(stream, "{\"ok\":true}"),

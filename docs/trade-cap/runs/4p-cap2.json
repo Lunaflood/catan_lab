@@ -1,0 +1,29 @@
+{
+  "cap": 2,
+  "players": 4,
+  "games": 48,
+  "seed": 10020000,
+  "finished": 48,
+  "turns": 3312,
+  "actions": 28174,
+  "offers": 3252,
+  "deals": 1827,
+  "counters": 2331,
+  "offers_by_ordinal": [
+    2126,
+    1126
+  ],
+  "deals_by_ordinal": [
+    1346,
+    481
+  ],
+  "responses_by_ordinal": [
+    6378,
+    3378
+  ],
+  "offers_after_deal": [
+    0,
+    611
+  ],
+  "elapsed_s": 402.86
+}

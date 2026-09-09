@@ -295,6 +295,7 @@ pub extern "C" fn offer_custom(
     g0: u32, g1: u32, g2: u32, g3: u32, g4: u32,
     w0: u32, w1: u32, w2: u32, w3: u32, w4: u32,
 ) -> u32 {
+    if [g0, g1, g2, g3, g4, w0, w1, w2, w3, w4].iter().any(|&n| n > 19) { return 0; }
     let give: Bundle = [g0 as u8, g1 as u8, g2 as u8, g3 as u8, g4 as u8];
     let want: Bundle = [w0 as u8, w1 as u8, w2 as u8, w3 as u8, w4 as u8];
     SESSION.with(|s| {
@@ -323,6 +324,7 @@ pub extern "C" fn counter_custom(
     g0: u32, g1: u32, g2: u32, g3: u32, g4: u32,
     w0: u32, w1: u32, w2: u32, w3: u32, w4: u32,
 ) -> u32 {
+    if [g0, g1, g2, g3, g4, w0, w1, w2, w3, w4].iter().any(|&n| n > 19) { return 0; }
     let give: Bundle = [g0 as u8, g1 as u8, g2 as u8, g3 as u8, g4 as u8];
     let want: Bundle = [w0 as u8, w1 as u8, w2 as u8, w3 as u8, w4 as u8];
     SESSION.with(|s| {
@@ -355,6 +357,7 @@ pub extern "C" fn counter_alt(
     g0: u32, g1: u32, g2: u32, g3: u32, g4: u32,
     w0: u32, w1: u32, w2: u32, w3: u32, w4: u32,
 ) -> u32 {
+    if [g0, g1, g2, g3, g4, w0, w1, w2, w3, w4].iter().any(|&n| n > 19) { return 0; }
     let give: Bundle = [g0 as u8, g1 as u8, g2 as u8, g3 as u8, g4 as u8];
     let want: Bundle = [w0 as u8, w1 as u8, w2 as u8, w3 as u8, w4 as u8];
     SESSION.with(|s| {
@@ -487,6 +490,7 @@ pub extern "C" fn maritime_bulk(
     g0: u32, g1: u32, g2: u32, g3: u32, g4: u32,
     t0: u32, t1: u32, t2: u32, t3: u32, t4: u32,
 ) -> u32 {
+    if [g0, g1, g2, g3, g4, t0, t1, t2, t3, t4].iter().any(|&n| n > 19) { return 0; }
     let give: Bundle = [g0 as u8, g1 as u8, g2 as u8, g3 as u8, g4 as u8];
     let take: Bundle = [t0 as u8, t1 as u8, t2 as u8, t3 as u8, t4 as u8];
     SESSION.with(|s| {
@@ -590,6 +594,7 @@ pub extern "C" fn discard_needed() -> u32 {
 /// 「持っていて・枚数がちょうど」なら任意の組み合わせを受ける。UI はここを使う。
 #[no_mangle]
 pub extern "C" fn discard_custom(d0: u32, d1: u32, d2: u32, d3: u32, d4: u32) -> u32 {
+    if [d0, d1, d2, d3, d4].iter().any(|&n| n > 19) { return 0; }
     let b: Bundle = [d0 as u8, d1 as u8, d2 as u8, d3 as u8, d4 as u8];
     SESSION.with(|s| {
         let mut bo = s.borrow_mut();
@@ -1598,4 +1603,57 @@ fn shortage_notes(g: &Game, roll: u8, before: &[Bundle; MAX_PLAYERS]) -> Vec<Str
         });
     }
     out
+}
+
+
+#[cfg(test)]
+mod input_regression_tests {
+    use super::*;
+
+    fn ready() {
+        game_new(42, 4, 3, 2, 4, 1, 0, 1);
+        loop {
+            let setup = SESSION.with(|s| s.borrow().as_ref().unwrap().game.is_setup());
+            if !setup { break; }
+            assert_eq!(apply_index(0), 1);
+        }
+        SESSION.with(|s| {
+            let mut b = s.borrow_mut();
+            let sess = b.as_mut().unwrap();
+            let g = &mut sess.game;
+            for p in 0..g.n() { for r in 0..5 {
+                g.bank[r] += g.players[p].hand[r];
+                g.players[p].hand[r] = 0;
+            }}
+            g.bank[0] -= 8; g.players[0].hand[0] = 8;
+            g.bank[1] -= 2; g.players[1].hand[1] = 2;
+            g.rolled = true;
+            g.legal_actions_into(&mut sess.actions);
+        });
+    }
+
+    #[test]
+    fn oversized_card_counts_do_not_wrap_or_mutate_the_game() {
+        ready();
+        let before = fingerprint();
+        assert_eq!(offer_custom(257,0,0,0,0, 0,1,0,0,0), 0);
+        assert_eq!(maritime_bulk(260,0,0,0,0, 0,1,0,0,0), 0);
+        assert_eq!(fingerprint(), before);
+        assert_eq!(offer_custom(1,0,0,0,0, 0,1,0,0,0), 1);
+        let before = fingerprint();
+        assert_eq!(counter_custom(0,257,0,0,0, 1,0,0,0,0), 0);
+        assert_eq!(counter_alt(0,257,0,0,0, 1,0,0,0,0), 0);
+        assert_eq!(fingerprint(), before);
+        ready();
+        SESSION.with(|s| {
+            let mut b = s.borrow_mut();
+            let sess = b.as_mut().unwrap();
+            sess.game.prompt = Prompt::Discard;
+            sess.game.discard_pending[0] = 4;
+            sess.game.legal_actions_into(&mut sess.actions);
+        });
+        let before = fingerprint();
+        assert_eq!(discard_custom(260,0,0,0,0), 0);
+        assert_eq!(fingerprint(), before);
+    }
 }

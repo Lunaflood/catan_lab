@@ -1,0 +1,120 @@
+   Compiling catan-core v0.1.0 (C:\catan_lab\crates\catan-core)
+   Compiling catan-ai v0.1.0 (C:\catan_lab\crates\catan-ai)
+   Compiling catan-wasm v0.1.0 (C:\catan_lab\crates\catan-wasm)
+   Compiling catan-server v0.1.0 (C:\catan_lab\crates\catan-server)
+   Compiling catan-cli v0.1.0 (C:\catan_lab\crates\catan-cli)
+warning: field `method` is never read
+  --> crates\catan-server\src\http.rs:15:9
+   |
+14 | pub struct Request {
+   |            ------- field in this struct
+15 |     pub method: String,
+   |         ^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `open_sse` is never used
+   --> crates\catan-server\src\http.rs:124:8
+    |
+124 | pub fn open_sse(stream: &mut TcpStream) -> bool {
+    |        ^^^^^^^^
+
+warning: function `push` is never used
+   --> crates\catan-server\src\http.rs:144:8
+    |
+144 | pub fn push(stream: &mut TcpStream, data: &str) -> bool {
+    |        ^^^^
+
+warning: `catan-server` (bin "catan-server" test) generated 3 warnings
+    Finished `bench-debug` profile [optimized + debuginfo] target(s) in 1m 01s
+     Running unittests src\lib.rs (target\bench-debug\deps\catan_ai-be88019dc5483088.exe)
+
+running 2 tests
+test prune::tests::自分のヘクスには盗賊を置かない ... ok
+test prune::tests::枝刈りしても手は必ず残る ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests\belief_v2.rs (target\bench-debug\deps\belief_v2-8d4a7c34c801cc08.exe)
+
+running 9 tests
+test 当事者と第三者で盗みの扱いが違う ... ok
+test 勝利判定の証拠は正しいタイミングだけ ... ok
+test 複数購入後の使用で世代を決め打ちしない ... ok
+test 別カードを使った手番の不使用は証拠にならない ... ok
+test 有効な機会の不使用でだけvp確率が上がる ... ok
+test 置ける道がない時の街道建設の不使用は証拠にならない ... ok
+test 追加情報がなければ超幾何分布と一致する ... ok
+test 傾向の混合は過信を抑える ... ok
+test 保存則と観測整合を全粒子が満たす ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests\diagnose.rs (target\bench-debug\deps\diagnose-a42bc354c7fa4d6b.exe)
+
+running 1 test
+test 一局の中身を数える ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests\fairness.rs (target\bench-debug\deps\fairness-aa521153411f9139.exe)
+
+running 2 tests
+test every_alternative_and_acceptance_is_payable_in_every_sample ... ok
+test hidden_resources_development_and_future_do_not_change_decision ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.09s
+
+     Running tests\fairness_v2.rs (target\bench-debug\deps\fairness_v2-67b465549fe7adbb.exe)
+
+running 4 tests
+test 相手の伏せた勝利点はv2の判断を変えない ... ok
+test 秘密を差し替えても投影された出来事は一致する ... ok
+test 秘密を差し替えても観測は一致する ... ok
+test 秘密を差し替えても判断と説明は一致する ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.90s
+
+     Running tests\hidden_vp.rs (target\bench-debug\deps\hidden_vp-1da9b06c9a859980.exe)
+
+running 4 tests
+test 公開勝利点には勝利点カードが入らない ... ok
+test 伏せた勝利点は手番の外では勝ちにならない ... ok
+test 勝利判定は伏せた点も数える ... ok
+test 相手の伏せた勝利点はcpuの判断を変えない ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\placement.rs (target\bench-debug\deps\placement-f0bcac13082d265b.exe)
+
+running 7 tests
+test 評価は決定的 ... ok
+test 道は空いている方角へ伸びる ... ok
+test 砂漠だけの死に頂点を選ばない ... ok
+test 海に面した1ヘクスだけの頂点は掴まない ... ok
+test 二軒目は一軒目と資源が被りにくい ... ok
+test 配置ボットはランダムより産出も種類も明確に上 ... ok
+test 手で決めた重みより実測で残した重みの方が産出が高い ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests\produce_real.rs (target\bench-debug\deps\produce_real-1ca6572eec89cf3e.exe)
+
+running 1 test
+test 実戦の進行でも産出は規則どおり ... FAILED
+
+failures:
+
+---- 実戦の進行でも産出は規則どおり stdout ----
+
+thread '実戦の進行でも産出は規則どおり' (27996) panicked at crates\catan-core\src\game.rs:918:13:
+assertion failed: self.players[to as usize].hand[i] >= want[i]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    実戦の進行でも産出は規則どおり
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p catan-ai --test produce_real`

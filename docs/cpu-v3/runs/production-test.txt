@@ -1,0 +1,9 @@
+   Compiling catan-ai v0.1.0 (C:\catan_lab\crates\catan-ai)
+    Finished `bench-debug` profile [optimized + debuginfo] target(s) in 13.98s
+     Running tests\produce_real.rs (target\bench-debug\deps\produce_real-b80dd5270d623836.exe)
+
+running 1 test
+test 実戦の進行でも産出は規則どおり has been running for over 60 seconds
+test 実戦の進行でも産出は規則どおり ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 70.72s

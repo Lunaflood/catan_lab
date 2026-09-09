@@ -1,0 +1,17 @@
+[
+  {
+    "Algorithm": "SHA256",
+    "Hash": "B67C163553022ED0481D6E9245162FF987F5CA4E9C9A01C639A9BB7826FAC653",
+    "Path": "C:\\catan_lab\\target\\release\\catan.exe"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "EDDF71489F93080ACE154C5669A787D4FA0E59DF55C737E7DF8302551612DD0A",
+    "Path": "C:\\catan_lab\\target\\release\\catan-server.exe"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "8D3869753184C4828641E13C2B5FB90BB5CC3F7948308695929C27C620FCA8F5",
+    "Path": "C:\\catan_lab\\web\\catan_wasm.wasm"
+  }
+]

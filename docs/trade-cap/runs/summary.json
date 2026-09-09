@@ -1,0 +1,258 @@
+[
+  {
+    "cap": 1,
+    "players": 3,
+    "games": 24,
+    "seed": 10030000,
+    "finished": 24,
+    "turns": 1809,
+    "actions": 9617,
+    "offers": 895,
+    "deals": 573,
+    "counters": 494,
+    "offers_by_ordinal": [
+      895
+    ],
+    "deals_by_ordinal": [
+      573
+    ],
+    "responses_by_ordinal": [
+      1790
+    ],
+    "offers_after_deal": [
+      0
+    ],
+    "elapsed_s": 69.27
+  },
+  {
+    "cap": 2,
+    "players": 3,
+    "games": 24,
+    "seed": 10030000,
+    "finished": 24,
+    "turns": 1761,
+    "actions": 10495,
+    "offers": 1201,
+    "deals": 635,
+    "counters": 601,
+    "offers_by_ordinal": [
+      859,
+      342
+    ],
+    "deals_by_ordinal": [
+      509,
+      126
+    ],
+    "responses_by_ordinal": [
+      1718,
+      684
+    ],
+    "offers_after_deal": [
+      0,
+      140
+    ],
+    "elapsed_s": 69.36
+  },
+  {
+    "cap": 3,
+    "players": 3,
+    "games": 24,
+    "seed": 10030000,
+    "finished": 24,
+    "turns": 1833,
+    "actions": 11696,
+    "offers": 1463,
+    "deals": 753,
+    "counters": 713,
+    "offers_by_ordinal": [
+      913,
+      382,
+      168
+    ],
+    "deals_by_ordinal": [
+      539,
+      164,
+      50
+    ],
+    "responses_by_ordinal": [
+      1826,
+      764,
+      336
+    ],
+    "offers_after_deal": [
+      0,
+      164,
+      81
+    ],
+    "elapsed_s": 70.96
+  },
+  {
+    "cap": 5,
+    "players": 3,
+    "games": 24,
+    "seed": 10030000,
+    "finished": 24,
+    "turns": 1811,
+    "actions": 11898,
+    "offers": 1536,
+    "deals": 747,
+    "counters": 756,
+    "offers_by_ordinal": [
+      873,
+      360,
+      161,
+      86,
+      56
+    ],
+    "deals_by_ordinal": [
+      519,
+      152,
+      41,
+      22,
+      13
+    ],
+    "responses_by_ordinal": [
+      1746,
+      720,
+      322,
+      172,
+      112
+    ],
+    "offers_after_deal": [
+      0,
+      162,
+      77,
+      40,
+      31
+    ],
+    "elapsed_s": 73.83
+  },
+  {
+    "cap": 1,
+    "players": 4,
+    "games": 48,
+    "seed": 10020000,
+    "finished": 48,
+    "turns": 3556,
+    "actions": 25176,
+    "offers": 2403,
+    "deals": 1554,
+    "counters": 2078,
+    "offers_by_ordinal": [
+      2403
+    ],
+    "deals_by_ordinal": [
+      1554
+    ],
+    "responses_by_ordinal": [
+      7209
+    ],
+    "offers_after_deal": [
+      0
+    ],
+    "elapsed_s": 359.34
+  },
+  {
+    "cap": 2,
+    "players": 4,
+    "games": 48,
+    "seed": 10020000,
+    "finished": 48,
+    "turns": 3312,
+    "actions": 28174,
+    "offers": 3252,
+    "deals": 1827,
+    "counters": 2331,
+    "offers_by_ordinal": [
+      2126,
+      1126
+    ],
+    "deals_by_ordinal": [
+      1346,
+      481
+    ],
+    "responses_by_ordinal": [
+      6378,
+      3378
+    ],
+    "offers_after_deal": [
+      0,
+      611
+    ],
+    "elapsed_s": 402.86
+  },
+  {
+    "cap": 3,
+    "players": 4,
+    "games": 48,
+    "seed": 10020000,
+    "finished": 48,
+    "turns": 3273,
+    "actions": 30400,
+    "offers": 3762,
+    "deals": 1937,
+    "counters": 2655,
+    "offers_by_ordinal": [
+      2098,
+      1076,
+      588
+    ],
+    "deals_by_ordinal": [
+      1273,
+      465,
+      199
+    ],
+    "responses_by_ordinal": [
+      6294,
+      3228,
+      1764
+    ],
+    "offers_after_deal": [
+      0,
+      540,
+      353
+    ],
+    "elapsed_s": 361.29
+  },
+  {
+    "cap": 5,
+    "players": 4,
+    "games": 48,
+    "seed": 10020000,
+    "finished": 48,
+    "turns": 3248,
+    "actions": 32870,
+    "offers": 4297,
+    "deals": 2108,
+    "counters": 2909,
+    "offers_by_ordinal": [
+      2086,
+      1057,
+      586,
+      340,
+      228
+    ],
+    "deals_by_ordinal": [
+      1257,
+      464,
+      217,
+      108,
+      62
+    ],
+    "responses_by_ordinal": [
+      6258,
+      3171,
+      1758,
+      1020,
+      684
+    ],
+    "offers_after_deal": [
+      0,
+      528,
+      362,
+      232,
+      157
+    ],
+    "elapsed_s": 425.22
+  }
+]

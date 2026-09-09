@@ -63,7 +63,7 @@ function readJson(ptr) {
 }
 
 async function loadWasm() {
-  const res = await fetch("catan_wasm.wasm");
+  const res = await fetch("catan_wasm.wasm", { cache: "no-store" });
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   wasm = instance.exports;
 }
@@ -867,7 +867,7 @@ function drawHints(gHints) {
       const [x, y] = tileXY(a.tile);
       // 点線の輪郭は地形の絵に紛れて見づらい。
       // **数字チップを光る輪で囲って**、そこを見れば分かるようにする
-      const g = el("g", { class: "tilehint" }, gHints);
+      const g = el("g", { class: "tilehint" + (robberTile === a.tile ? " chosen" : ""), "data-tile": a.tile }, gHints);
       el("polygon", { points: hexPoints(x, y, board.hexSize * 0.9), class: "spot-tile" }, g);
       // 下に暗い縁を敷いてから明るい輪を重ねる。
       // 1 本だけだと、明るいヘクスの上と暗いヘクスの上で見え方が変わって
@@ -2469,8 +2469,8 @@ function renderTradeComposer(box, mode) {
  */
 function renderVictimPick(box) {
   const t = board.tiles[robberTile];
-  const acts = state.actions.filter((a) => a.tile === robberTile);
-  const me = state.players.find((p) => p.human);
+  const acts = state.actions.filter((a) => a.kind === "MOVE_ROBBER" && a.tile === robberTile);
+  const me = state.players.find((p) => p.id === state.toAct);
 
   // そのヘクスに面している相手
   const near = new Set();
@@ -2484,9 +2484,9 @@ function renderVictimPick(box) {
   const others = state.players.filter((p) => !me || p.id !== me.id);
   const canAny = others.some((p) => acts.some((x) => x.victim === p.id));
 
-  box.innerHTML = `<div class="banner pick">${
+  box.innerHTML = `<div class="banner pick">移動先：${RES_JA[t.resource] || "砂漠"}${t.number ? `（${t.number}）` : ""}<br>${
     canAny
-      ? "<b>誰から奪うか</b>　持ち物を見て選んでください"
+      ? "<b>誰から奪うか</b>　資源カードを１枚奪う相手を選んでください"
       : "<b>ここに置きますか？</b>　この場所からは誰からも奪えません"
   }</div>`;
 
@@ -2494,10 +2494,12 @@ function renderVictimPick(box) {
   wrap.className = "victims";
   for (const p of others) {
     const a = acts.find((x) => x.victim === p.id);
-    const why = a ? "" : !near.has(p.id) ? "この場所に面していない" : "手札が無い";
+    const why = a ? "" : !near.has(p.id) ? "隣接する開拓地・都市がない" : "資源カードがない（発展カードは奪えません）";
     const b = document.createElement("button");
     b.className = "vcard" + (a ? "" : " off");
     b.disabled = !a;
+    b.dataset.victim = p.id;
+    b.setAttribute("aria-label", a ? `${nameOf(p.id)}から資源カードを1枚奪う` : `${nameOf(p.id)}：${why}`);
     b.style.setProperty("--c", PLAYER_COLORS[p.id]);
     b.innerHTML = `
       <div class="vhead"><span class="sw"></span>${escapeHtml(nameOf(p.id))}
@@ -2515,7 +2517,7 @@ function renderVictimPick(box) {
   box.appendChild(wrap);
 
   // 誰からも奪えないヘクスは、置くだけ
-  const none = acts.find((x) => x.victim === undefined);
+  const none = acts.find((x) => x.victim == null);
   if (none) {
     box.appendChild(
       tile({ cls: "big roll mid", name: "ここに置く", sub: "", onClick: () => play(none.i) })
@@ -3276,7 +3278,10 @@ function renderPrompt() {
 // ---------------------------------------------------------------- 進行
 
 function isHumanTurn() { return wasm.is_human_turn() === 1; }
-function refreshState() { state = readJson(wasm.state_json()); }
+function refreshState() {
+  state = readJson(wasm.state_json());
+  if (state.prompt !== "MOVE_ROBBER" || !state.actions.some((a) => a.kind === "MOVE_ROBBER" && a.tile === robberTile)) robberTile = null;
+}
 
 /**
  * 効果音の見張り。
@@ -3436,8 +3441,9 @@ async function api(path, body) {
 
 /** 手を送る。**自分の手も、サーバから返ってきてから盤に入れる**（順番を 1 つに保つため） */
 function netSend(payload) {
-  api("act", { room: net.room, token: net.token, ...payload }).catch((e) => {
+  api("act", { room: net.room, token: net.token, ...payload, fp: wasm.fingerprint() >>> 0 }).catch((e) => {
     net.err = e.message;
+    toast(e.message);
     renderPrompt();
     console.warn(e);
   });
@@ -4069,7 +4075,7 @@ for (const [k, id] of ["seed", "seed2", "seed3", "seed4"].entries()) {
   document.getElementById(id).value = randomSeed(k);
 }
 /** この版の目印。画面に出して、どの版が動いているかを一目で分かるようにする */
-const BUILD = "v12";
+const BUILD = "v13";
 
 /**
  * 起動。

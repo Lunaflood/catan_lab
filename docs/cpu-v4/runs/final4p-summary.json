@@ -1,0 +1,52 @@
+{
+  "docs/cpu-v4/runs/final4p-*.txt": {
+    "games": 480,
+    "wins": 241,
+    "unfinished": 0,
+    "win_rate": 0.5020833333333333,
+    "wilson95": [
+      0.4575152429529004,
+      0.5466183424675691
+    ],
+    "max_block_p95_ms": 67.895,
+    "max_ms": 2356.842,
+    "blocks": [
+      {
+        "path": "docs/cpu-v4/runs\\final4p-0.txt",
+        "games": 120,
+        "finished": 120,
+        "wins": 60,
+        "p50_ms": 1.647,
+        "p95_ms": 62.99,
+        "max_ms": 2356.842
+      },
+      {
+        "path": "docs/cpu-v4/runs\\final4p-1.txt",
+        "games": 120,
+        "finished": 120,
+        "wins": 62,
+        "p50_ms": 1.66,
+        "p95_ms": 61.027,
+        "max_ms": 1558.162
+      },
+      {
+        "path": "docs/cpu-v4/runs\\final4p-2.txt",
+        "games": 120,
+        "finished": 120,
+        "wins": 57,
+        "p50_ms": 1.604,
+        "p95_ms": 67.895,
+        "max_ms": 1312.021
+      },
+      {
+        "path": "docs/cpu-v4/runs\\final4p-3.txt",
+        "games": 120,
+        "finished": 120,
+        "wins": 62,
+        "p50_ms": 1.655,
+        "p95_ms": 63.86,
+        "max_ms": 1426.035
+      }
+    ]
+  }
+}

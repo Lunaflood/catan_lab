@@ -1,0 +1,172 @@
+[
+  {
+    "Algorithm": "SHA256",
+    "Hash": "11BBCCD6F922B15C18D1A97CB10EAAC563C1D4810D08FA158884E3FE3295A04D",
+    "Path": "C:\\catan_lab\\crates\\catan-cli\\src\\v2tools.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "C81ACD3CBFA2AAD56A1E5CDB1FD94E6B7A72E1F4F1917497533ED8344590168E",
+    "Path": "C:\\catan_lab\\crates\\catan-cli\\src\\main.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "96B96A769968DC6899927AB61EEFD182AE31472604DCCDD0C85743FE822EF27E",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\turn_planner.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "FACF0B43467D2541A95F6BA4F5BB3F9F15E4CD43B36F54BDF61045BC33A2FAE3",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\trade.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "C11950869E4C3FDB5F298F8CA923E205CD72EB0BBC21456180F4DA2CE02B78A7",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\strategy.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "AA9C91D8DDC3AFCABD3551648894D54B6714118B478F6BD4CF0BA5CE9AF8CB44",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\setup_search.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "4E058853A18666AF010C6F13EECDDC77FB777ED01BC2C356C0F3AA9406E16C02",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\search_v2\\mod.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "E3901468A5D443D7851BCCF65081D9C2861A8D3CB686B688D1C8022C5B47902A",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\search.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "1A8CC09BC1251DE8A6FD3101B2D4B9BCB9819E3B38648259CB882A1FF9E4517F",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\prune.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "D8D27807E8261B272E46F6A7F7271D8F5FFA96C03238A6E535A113BC485C44EA",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\placement.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "CABDFD4BE3DF69594AB8C1CCC2C704B8A402670A19DC9BF4A50A61E536EA62ED",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\opponent\\mod.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "99DDBEAC8515DFD7EE2E5565127FDAFFA1799CCEBCD92EEEC76A8A0807802065",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\lib.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "599DFE69F616A3ED4BE98C0CDB841E02FD14A6EBB1B998089A45EF6079DB0A32",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\history.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "A66B6AA349550B2C31460D2B824FB968FFE9F6567058767173048E8A4016FCCA",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\harness.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "015D4736414FAB9BB6338511085FD4F008CB4B87F8E273132514F41DD3A5B4C2",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\eval.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "829FB03D364162D1595C411160C54709A33B8BCFE7BF4F5C40E33918103DE9AD",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\economy.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "76BA4CB428B19FCD291B24D0E08926B912FC1797B7D4410F6AC41A044C6FA65E",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\bots.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "F5682B4A5135919FC3C25545EF85D0E553BC57AF6E24DD0668968FA4CDBFAEF9",
+    "Path": "C:\\catan_lab\\crates\\catan-core\\src\\view.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "5A28C1D402B32A66221AABB37331EC6617C955DFD8DBB4CCA3AD40DD512D5E83",
+    "Path": "C:\\catan_lab\\crates\\catan-core\\src\\topology.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "88956C6A00BC90CD79C22558BFF46835B1888F403B408DDCCDA50F0304B9D4C5",
+    "Path": "C:\\catan_lab\\crates\\catan-core\\src\\rng.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "D9CBF03B1C5E90F4889697019F416FACFADD2F5C8D9303FE46443E3186E99777",
+    "Path": "C:\\catan_lab\\crates\\catan-core\\src\\observer.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "57592E07EE98CA51E2A22639CB67AD28E14D8B960D36CA63D79D199DD9DCF622",
+    "Path": "C:\\catan_lab\\crates\\catan-core\\src\\observation.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "5F195456649B9EA57A78818D5E9380C93314F7040FD38D0680E21B7FDB56AA63",
+    "Path": "C:\\catan_lab\\crates\\catan-core\\src\\longest_road.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "4D15E795E88FF3F6BB7966E776DDD75EF70B348EC884636F018C657BB8CA602C",
+    "Path": "C:\\catan_lab\\crates\\catan-core\\src\\lib.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "1B179B9E2EDE54E2218EAF40F079DBD6B60F5723D25B590F0252908952D5B5A5",
+    "Path": "C:\\catan_lab\\crates\\catan-core\\src\\game.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "BADAE54DECB048A862691D1424EBEDF1843377A758F73B328F6F22E620C5F16E",
+    "Path": "C:\\catan_lab\\crates\\catan-core\\src\\coord.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "BD1513377B41C8711BF6DCE5D6D4F1F0E5CB730B28532307F352D2015FA3D657",
+    "Path": "C:\\catan_lab\\crates\\catan-core\\src\\board.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "13F2DEA6844F48809016FF026BCAF73EF82DCAD46DB4A102F51734071A0CEA50",
+    "Path": "C:\\catan_lab\\crates\\catan-core\\src\\action.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "71A809912C816C13FFFC1ACD76D919F44221A8A0B2B916877C7265637B9FD33E",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\agent_v2.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "155A888C784A7A39DA213CB5049AC844F3201AB3153D14B763C3384B56F63BC0",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\belief\\reach.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "15BBAB8616F3F3474DD5B633C27B94690136F0B6ADD073F0A27F8B81D7AB0313",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\belief\\mod.rs"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "5434BC4178DF52217EC4922420FE1E96A0234F0DDB732BA43CD56F42332BE694",
+    "Path": "C:\\catan_lab\\Cargo.toml"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "68B96E95B63A43ED743A109E6961ED01A00CCC0AC5490037F2B1A04D559F25BA",
+    "Path": "C:\\catan_lab\\Cargo.lock"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "8C8F700D959B63E8E9D1B3E2E27B3BA28147BD6C1A4B016C36DCB26CBEE30295",
+    "Path": "C:\\catan_lab\\target\\release\\catan.exe"
+  }
+]

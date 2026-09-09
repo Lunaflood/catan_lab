@@ -31,6 +31,21 @@ enum DevUse {
     Monopoly(usize),
 }
 
+/// Complete input to a fresh next-turn query. Used only for decision-local
+/// memoization; equality includes every immutable solver parameter and budget.
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct ReachSignature {
+    config: [u8; 7],
+    hand: Bundle,
+    rates: [u8; 5],
+    bank: Bundle,
+    dev: [u8; NUM_DEV_KINDS],
+    deck: [u8; NUM_DEV_KINDS],
+    others: Bundle,
+    need: i32,
+    production: [Bundle; 13],
+    max_nodes: u64,
+}
 pub struct ReachSolver {
     pub p: PlayerId,
     rates: [u8; NUM_RESOURCES],
@@ -93,6 +108,19 @@ fn hyper_at_least(deck: &[u8; NUM_DEV_KINDS], draws: u8, need: i32) -> f32 {
 }
 
 impl ReachSolver {
+    /// Call on a fresh solver before evaluating; mutable search history is not
+    /// part of this key. The board-hazard cache always constructs a fresh solver.
+    pub fn signature(&self, hand: &Bundle) -> ReachSignature {
+        debug_assert_eq!(self.nodes, 0);
+        ReachSignature {
+            config: [self.p, self.city_slots, self.settle_slots, self.roads_left,
+                self.can_road as u8, self.lr_needed.unwrap_or(255), self.army_gain as u8],
+            hand: *hand, rates: self.rates, bank: self.bank, dev: self.dev, deck: self.deck,
+            others: self.others, need: self.need_base, production: self.production,
+            max_nodes: self.max_nodes,
+        }
+    }
+
     /// `g` は公開局面（秘密は入っていなくてよい）。`dev`/`deck`/`others` は粒子の値。
     pub fn new(g: &Game, p: PlayerId, dev: [u8; NUM_DEV_KINDS], deck: [u8; NUM_DEV_KINDS], others: Bundle, bank: Bundle) -> Self {
         let topo = Topology::get();

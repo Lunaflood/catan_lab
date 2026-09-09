@@ -24,3 +24,10 @@ pub use bots::{Bot, GreedyEvalBot, PlacementBot, RandomBot, SearchBot, VpGreedyB
 pub use eval::EvalWeights;
 pub use placement::PlacementWeights;
 pub use harness::{run_match, MatchResult};
+
+pub mod turn_planner;
+
+pub mod economy;
+pub mod setup_search;
+
+pub mod strategy;

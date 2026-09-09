@@ -1,0 +1,102 @@
+{
+  "docs/cpu-v3/runs/final4p-*.txt": {
+    "games": 960,
+    "wins": 324,
+    "unfinished": 0,
+    "win_rate": 0.3375,
+    "wilson95": [
+      0.3082885146512666,
+      0.36800679600931985
+    ],
+    "max_block_p95_ms": 20.271,
+    "max_ms": 729.309,
+    "blocks": [
+      {
+        "path": "docs/cpu-v3/runs\\final4p-0.txt",
+        "games": 240,
+        "finished": 240,
+        "wins": 78,
+        "p50_ms": 0.387,
+        "p95_ms": 20.271,
+        "max_ms": 572.466
+      },
+      {
+        "path": "docs/cpu-v3/runs\\final4p-1.txt",
+        "games": 240,
+        "finished": 240,
+        "wins": 84,
+        "p50_ms": 0.371,
+        "p95_ms": 18.821,
+        "max_ms": 729.309
+      },
+      {
+        "path": "docs/cpu-v3/runs\\final4p-2.txt",
+        "games": 240,
+        "finished": 240,
+        "wins": 80,
+        "p50_ms": 0.367,
+        "p95_ms": 18.216,
+        "max_ms": 688.296
+      },
+      {
+        "path": "docs/cpu-v3/runs\\final4p-3.txt",
+        "games": 240,
+        "finished": 240,
+        "wins": 82,
+        "p50_ms": 0.367,
+        "p95_ms": 18.128,
+        "max_ms": 645.549
+      }
+    ]
+  },
+  "docs/cpu-v3/runs/final3p-*.txt": {
+    "games": 480,
+    "wins": 173,
+    "unfinished": 0,
+    "win_rate": 0.36041666666666666,
+    "wilson95": [
+      0.31872986952586085,
+      0.4043199073026709
+    ],
+    "max_block_p95_ms": 10.83,
+    "max_ms": 426.868,
+    "blocks": [
+      {
+        "path": "docs/cpu-v3/runs\\final3p-0.txt",
+        "games": 120,
+        "finished": 120,
+        "wins": 35,
+        "p50_ms": 0.218,
+        "p95_ms": 9.324,
+        "max_ms": 285.848
+      },
+      {
+        "path": "docs/cpu-v3/runs\\final3p-1.txt",
+        "games": 120,
+        "finished": 120,
+        "wins": 35,
+        "p50_ms": 0.239,
+        "p95_ms": 9.295,
+        "max_ms": 227.289
+      },
+      {
+        "path": "docs/cpu-v3/runs\\final3p-2.txt",
+        "games": 120,
+        "finished": 120,
+        "wins": 53,
+        "p50_ms": 0.228,
+        "p95_ms": 10.83,
+        "max_ms": 426.868
+      },
+      {
+        "path": "docs/cpu-v3/runs\\final3p-3.txt",
+        "games": 120,
+        "finished": 120,
+        "wins": 50,
+        "p50_ms": 0.23,
+        "p95_ms": 10.805,
+        "max_ms": 384.291
+      }
+    ]
+  }
+}

@@ -39,6 +39,10 @@ fn make_bot(name: &str, seed: u64) -> Option<Box<dyn Bot>> {
         // v2 の対照。設計書作成時の max（2手読み・推定3通り）を凍結した別名
         "v2_control" => Box::new(catan_ai::bots::v2_control(seed)),
         // v2（観測だけを受け取る推定つきエージェント）とそのアブレーション
+        "v4" => Box::new(AgentV2Bot::new(seed, V2Config::v4(), "v4")),
+        "v4_strategy" => Box::new(AgentV2Bot::new(seed, V2Config { strategic: true, ..V2Config::v3() }, "v4_strategy")),
+        "v4_setup" => Box::new(AgentV2Bot::new(seed, V2Config { setup_search: true, ..V2Config::v3() }, "v4_setup")),
+        "v3" => Box::new(AgentV2Bot::new(seed, V2Config::v3(), "v3")),
         "v2" => Box::new(AgentV2Bot::new(seed, V2Config::default(), "v2")),
         "v2_nohazard" => Box::new(AgentV2Bot::new(seed, V2Config { use_hazard: false, ..V2Config::default() }, "v2-ハザードなし")),
         "v2_nohist" => Box::new(AgentV2Bot::new(seed, V2Config { belief: BeliefConfig::no_history(), ..V2Config::default() }, "v2-履歴なし")),
@@ -96,6 +100,7 @@ fn main() {
         "trial" => trial(&args[1..]),
         "v2-calib" => v2tools::calib(&args[1..], &make_bot),
         "v2-fit" => v2tools::fit(&args[1..], &make_bot),
+        "v4-explain" => v2tools::explain_with_config(&args[1..], V2Config::v4(), "v4"),
         "v2-explain" => v2tools::explain(&args[1..]),
         other => {
             eprintln!("知らないコマンド: {other}\n{USAGE}");
@@ -114,15 +119,17 @@ const USAGE: &str = "\
   catan eval-sweep <項目> <値,...> [試合数] [--seed S]
   catan v2-calib [--games N] [--seed S] [--bots a,b,c,d] [--particles P] [--only-full] [--no-hazard]
   catan v2-fit [--games N] [--seed S] [--bots a,b,c,d]     相手モデルの使用率を実測
+  catan v4-explain [--seed S] [--every K]                   v4 の判断の説明を出す
   catan v2-explain [--seed S] [--every K]                   v2 の判断の説明を出す
   catan match <bot> <bot> [<bot>] [--games N] [--seed S] [--no-trade]
-                                  [--narrow-offers] [--turn-ms MS | --no-time-limit] [--tick-ms MS]
+                                  [--narrow-offers] [--max-offers N] [--turn-ms MS | --no-time-limit] [--tick-ms MS]
 
-ボット: random | weighted | vpgreedy | placement | greedy | narrow | search1 | search2 | search3 | search4
+ボット: v4 | v3 | v2 | v4_setup | v4_strategy | max | random | weighted | vpgreedy | placement | greedy | narrow | search1 | search2 | search3 | search4
 
 --turn-ms       1手番の持ち時間(ミリ秒・既定 120000 = 2分)。切れると交渉だけ止まる
 --no-time-limit 持ち時間なし
 --tick-ms       自己対戦用の仮想時計が1行動で進む量(既定 500)
+--max-offers N  CPU の新規交易提案の上限（1 手番、既定 3）。銀行・港・対案は別枠。
 --narrow-offers 提案を1種類↔1種類だけに絞る（複数種類の束を作らない）";
 
 fn bench(games: usize) {
@@ -161,6 +168,10 @@ fn run_match_cmd(args: &[String]) {
             "--seed" => {
                 i += 1;
                 seed = args[i].parse().expect("--seed は数値");
+            }
+            "--max-offers" => {
+                i += 1;
+                cfg.max_offers_per_turn = args[i].parse().expect("--max-offers は 0〜255");
             }
             "--narrow-offers" => {
                 // 提案を「1 種類 ↔ 1 種類」だけに戻す（広い生成との A/B 用）
@@ -213,6 +224,16 @@ fn run_match_cmd(args: &[String]) {
     );
     let r = run_match(&mut bots, games, seed, cfg);
     print!("{}", r.report());
+    assert_eq!(r.offers_by_ordinal.iter().sum::<u64>(), r.offers);
+    assert_eq!(r.deals_by_ordinal.iter().sum::<u64>(), r.confirmed + r.counters_accepted);
+    let k = cfg.max_offers_per_turn as usize;
+    println!(
+        "TRADE_JSON {{\"cap\":{},\"players\":{},\"games\":{},\"seed\":{},\"finished\":{},\"turns\":{},\"actions\":{},\"offers\":{},\"deals\":{},\"counters\":{},\"offers_by_ordinal\":{:?},\"deals_by_ordinal\":{:?},\"responses_by_ordinal\":{:?},\"offers_after_deal\":{:?}}}",
+        k, names.len(), games, seed, r.finished, r.total_turns, r.total_actions,
+        r.offers, r.confirmed + r.counters_accepted, r.counters,
+        &r.offers_by_ordinal[..k], &r.deals_by_ordinal[..k],
+        &r.responses_by_ordinal[..k], &r.offers_after_deal[..k],
+    );
 }
 
 

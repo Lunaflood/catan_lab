@@ -573,6 +573,18 @@ impl Room {
         Ok(())
     }
 
+    /// 手番号は局面ごとに意味が変わる。遅延・二重送信を着手前に検出する。
+    pub fn check_client_state(&self, expected: Option<u32>) -> Result<(), &'static str> {
+        let Some(expected) = expected else {
+            return Err("画面を再読み込みしてから操作してください");
+        };
+        let Some(game) = self.game.as_ref() else { return Err("対局が始まっていない"); };
+        if game.fingerprint() != expected {
+            return Err("盤面が更新されています。最新の画面で選び直してください");
+        }
+        Ok(())
+    }
+
     /// 合法手の一覧から番号で指す
     pub fn apply_index(&mut self, seat: usize, index: usize) -> Result<(), &'static str> {
         self.check_turn(seat)?;
@@ -1378,4 +1390,22 @@ mod tests {
             assert!(msg.contains("\"fp\":"), "指紋の無い電文がある: {msg}");
         }
     }
+
+    #[test]
+    fn stale_or_duplicate_input_is_rejected_before_reinterpreting_its_index() {
+        let mut room = Room::new("TEST".into());
+        room.members.push(Member::new("tok".into(), "私".into()));
+        room.balance(4);
+        room.start_with_seeds([42, 4, 3, 2]);
+        let fp = room.game.as_ref().unwrap().fingerprint();
+        assert!(room.check_client_state(None).is_err());
+        assert!(room.check_client_state(Some(fp)).is_ok());
+        room.apply_index(0, 0).unwrap(); // 同じ人が次に道を置くため、手番チェックだけでは連打を防げない。
+        let after = room.game.as_ref().unwrap().fingerprint();
+        assert_ne!(fp, after);
+        assert!(room.check_client_state(Some(fp)).is_err());
+        assert_eq!(room.game.as_ref().unwrap().fingerprint(), after);
+        assert!(room.check_client_state(Some(after)).is_ok());
+    }
+
 }

@@ -593,8 +593,8 @@ impl Game {
                     // 対案は、提案者が求められた側の資源を払える時だけ受けられる。
                     // 候補が複数あれば、払えるものを全部並べて選ばせる
                     for (k, c) in t.counters[q].iter().enumerate() {
-                        if let Some((_cgive, cwant)) = c {
-                            if bundle_contains(&ps.hand, cwant) {
+                        if let Some((cgive, cwant)) = c {
+                            if !Self::offer_is_open(cgive, cwant) && bundle_contains(&ps.hand, cwant) {
                                 out.push(Action::AcceptCounter { from: q as PlayerId, alt: k as u8 });
                             }
                         }
@@ -897,6 +897,7 @@ impl Game {
     /// 受けた側は対案でしか答えられない（[`Game::offer_is_open`] を見よ）。
     /// 両側とも空は、何も動かないので認めない。
     fn validate_offer(&self, from: PlayerId, give: &Bundle, want: &Bundle) {
+        assert!(give.iter().chain(want).all(|&n| n <= BANK_PER_RESOURCE), "資源は各種19枚まで");
         assert!(
             bundle_contains(&self.players[from as usize].hand, give),
             "持っていない資源を出そうとした"
@@ -995,7 +996,8 @@ impl Game {
             Action::OfferTrade { give, want } | Action::CounterOffer { give, want }
             | Action::CounterAlt { give, want } => {
                 // 片側が空でもよい（「相談」の提案）。両側とも空は不可
-                let ok_shape = (bundle_total(give) > 0 || bundle_total(want) > 0)
+                let ok_shape = give.iter().chain(want).all(|&n| n <= BANK_PER_RESOURCE)
+                    && (bundle_total(give) > 0 || bundle_total(want) > 0)
                     && (0..NUM_RESOURCES).all(|i| give[i] == 0 || want[i] == 0)
                     && bundle_contains(&self.players[self.to_act as usize].hand, give);
                 if !ok_shape || !self.negotiation_open() {
@@ -1209,7 +1211,7 @@ impl Game {
                 // 自動生成された提案以外（AI が自前で組んだもの）もここを通るので検証する。
                 assert!(negotiation_was_open, "手番の持ち時間が切れている");
                 self.validate_offer(actor, &give, &want);
-                self.offers_this_turn += 1;
+                self.offers_this_turn = self.offers_this_turn.saturating_add(1);
                 self.trade = Some(TradeState {
                     proposer: actor,
                     give,

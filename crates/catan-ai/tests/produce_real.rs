@@ -43,7 +43,7 @@ fn 実戦の進行でも産出は規則どおり() {
         let mut g = Game::with_config(4, seed, cfg);
         let mut buf = Vec::new();
         let mut hit = false;
-        for _ in 0..3000 {
+        for step in 0..3000 {
             if g.is_over() { break; }
             g.legal_actions_into(&mut buf);
             if buf.is_empty() { break; }
@@ -52,8 +52,10 @@ fn 実戦の進行でも産出は規則どおり() {
             let is_roll = matches!(a, Action::Roll);
             let before_hands: Vec<_> = (0..g.n()).map(|q| g.players[q].hand).collect();
             let before_bank = g.bank;
-            let pre = if is_roll { Some(g.clone()) } else { None };
+            let before = g.clone();
+            let pre = if is_roll { Some(before.clone()) } else { None };
             let rec = g.apply(a);
+            catan_ai::harness::notify_bots(&mut bots, &[0, 1, 2, 3], &before, &g, &rec, step + 1);
 
             for r in 0..NUM_RESOURCES {
                 let held: u32 = (0..g.n()).map(|q| g.players[q].hand[r] as u32).sum();

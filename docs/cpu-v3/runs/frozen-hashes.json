@@ -1,0 +1,12 @@
+[
+  {
+    "Algorithm": "SHA256",
+    "Hash": "D20490B9AA37E3533F3BCCEF12160138DE35B8267CB54830065142256AE9C2D7",
+    "Path": "C:\\catan_lab\\target\\release\\catan.exe"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "98890BB0B89A15AF7691AB3B18D099565D8EBD4DD930C32672AD76FC0D317FA6",
+    "Path": "C:\\catan_lab\\crates\\catan-ai\\src\\turn_planner.rs"
+  }
+]

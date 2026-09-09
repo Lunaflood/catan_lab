@@ -82,6 +82,12 @@ pub struct MatchResult {
     pub counters: u64,
     pub confirmed: u64,
     pub counters_accepted: u64,
+    /// 新規提案の手番内の順番別件数（添字 0 が 1 回目）。対案は元の提案に帰属。
+    pub offers_by_ordinal: Vec<u64>,
+    pub deals_by_ordinal: Vec<u64>,
+    pub responses_by_ordinal: Vec<u64>,
+    /// 同じ手番ですでに交易が成立した後の追加提案。
+    pub offers_after_deal: Vec<u64>,
     /// ボットごとの 1 判断の所要時間（マイクロ秒）。合法手が 1 つの局面も含む
     pub decision_us: Vec<Vec<u32>>,
 }
@@ -208,6 +214,10 @@ pub fn run_match(
     let mut total_actions = 0u64;
     let (mut offers, mut counters, mut confirmed, mut counters_accepted) = (0u64, 0u64, 0u64, 0u64);
 
+    let mut offers_by_ordinal = vec![0u64; 256];
+    let mut deals_by_ordinal = vec![0u64; 256];
+    let mut responses_by_ordinal = vec![0u64; 256];
+    let mut offers_after_deal = vec![0u64; 256];
     let t0 = std::time::Instant::now();
     let mut buf: Vec<Action> = Vec::with_capacity(64);
     let mut decision_us: Vec<Vec<u32>> = vec![Vec::new(); n];
@@ -224,6 +234,7 @@ pub fn run_match(
 
         let mut g = Game::with_config(n as u8, seed, cfg);
         let mut actions = 0usize;
+        let mut deal_this_turn = false;
         // 出来事の配信は、受けたいボットが 1 体でもいる時だけ（旧ボットには余計な仕事）
         let any_events = bots.iter().any(|b| b.wants_events());
         let mut seq = 0u64;
@@ -237,10 +248,30 @@ pub fn run_match(
             let a = bots[b].decide(&view, &buf);
             decision_us[b].push(td.elapsed().as_micros().min(u32::MAX as u128) as u32);
             match a {
-                Action::OfferTrade { .. } => offers += 1,
-                Action::CounterOffer { .. } => counters += 1,
-                Action::ConfirmTrade(_) => confirmed += 1,
-                Action::AcceptCounter { .. } => counters_accepted += 1,
+                Action::OfferTrade { .. } => {
+                    offers += 1;
+                    let ordinal = g.offers_this_turn as usize;
+                    offers_by_ordinal[ordinal] += 1;
+                    offers_after_deal[ordinal] += u64::from(deal_this_turn);
+                }
+                Action::CounterOffer { .. } => {
+                    counters += 1;
+                    responses_by_ordinal[g.offers_this_turn.saturating_sub(1) as usize] += 1;
+                }
+                Action::AcceptTrade | Action::RejectTrade => {
+                    responses_by_ordinal[g.offers_this_turn.saturating_sub(1) as usize] += 1;
+                }
+                Action::ConfirmTrade(_) => {
+                    confirmed += 1;
+                    deals_by_ordinal[g.offers_this_turn.saturating_sub(1) as usize] += 1;
+                    deal_this_turn = true;
+                }
+                Action::AcceptCounter { .. } => {
+                    counters_accepted += 1;
+                    deals_by_ordinal[g.offers_this_turn.saturating_sub(1) as usize] += 1;
+                    deal_this_turn = true;
+                }
+                Action::EndTurn => deal_this_turn = false,
                 _ => {}
             }
             if any_events {
@@ -282,6 +313,10 @@ pub fn run_match(
         counters,
         confirmed,
         counters_accepted,
+        offers_by_ordinal,
+        deals_by_ordinal,
+        responses_by_ordinal,
+        offers_after_deal,
         decision_us,
     }
 }

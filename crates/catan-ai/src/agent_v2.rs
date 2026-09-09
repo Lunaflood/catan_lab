@@ -25,6 +25,10 @@ use crate::search::{best_action_samples, RootValue, SearchHooks, SearchLimits};
 
 #[derive(Clone, Copy, Debug)]
 pub struct V2Config {
+    /// v3 selective turn-sequence planner; false preserves the frozen v2.
+    pub turn_planner: bool,
+    pub setup_search: bool,
+    pub strategic: bool,
     pub belief: BeliefConfig,
     /// 推定サンプル（粒子）の本数
     pub samples: usize,
@@ -48,6 +52,9 @@ pub struct V2Config {
 impl Default for V2Config {
     fn default() -> Self {
         V2Config {
+            turn_planner: false,
+            setup_search: false,
+            strategic: false,
             belief: BeliefConfig::default(),
             samples: 3,
             depth: 2,
@@ -146,6 +153,15 @@ impl AgentV2 {
         let n = obs.num_players();
         let legal = &obs.legal;
         assert!(!legal.is_empty(), "合法手が空");
+        if self.cfg.setup_search && matches!(obs.public.game.prompt, Prompt::SetupSettlement | Prompt::SetupRoad) {
+            let mut values = crate::setup_search::rank(obs);
+            values.sort_by(|a, b| b.value.total_cmp(&a.value));
+            let chosen = values[0].action;
+            let candidates = values.len();
+            values.truncate(8);
+            self.last = DecisionEvidence { chosen: Some(chosen), top: values, candidates, ..Default::default() };
+            return chosen;
+        }
         // 秘密を消した局面の上に View を作る（配置の評価関数は公開情報しか読まない）
         let pub_view = View::new(&obs.public.game, me);
         match obs.public.game.prompt {
@@ -206,6 +222,7 @@ impl AgentV2 {
         let bank = obs.public.bank.unwrap_or([0; NUM_RESOURCES]);
         let pub_game = &obs.public.game;
         // 根の補正: 相手の手札を動かす手は、その相手の勝利ハザードの増減で評価を直す
+        let board_hazards = std::cell::RefCell::new(crate::strategy::BoardHazards::default());
         let adjust = |_si: usize, g: &Game, a: Action| -> f32 {
             if !cfg.use_hazard || cfg.hazard_weight == 0.0 {
                 return 0.0;
@@ -298,6 +315,7 @@ impl AgentV2 {
                 }
                 _ => {}
             }
+            if cfg.strategic { delta += board_hazards.borrow_mut().delta(g, me, a); }
             -cfg.hazard_weight * delta
         };
         // M4: 葉のロールアウト（相手の手番を自分の次の手番まで）。RNG はセル越しに使う
@@ -320,7 +338,11 @@ impl AgentV2 {
             root_adjust: Some(&adjust),
             leaf: if cfg.rollout_mix > 0.0 { Some(&leaf) } else { None },
         };
-        let (chosen, mut values) = best_action_samples(&samples, me, legal, &w, &lim, &hooks);
+        let (chosen, mut values) = if cfg.turn_planner {
+            crate::turn_planner::best_action_with_strategy(&samples, me, legal, &w, &lim, &hooks, cfg.strategic)
+        } else {
+            best_action_samples(&samples, me, legal, &w, &lim, &hooks)
+        };
         values.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
         let candidates = values.len();
         values.truncate(8);
@@ -403,5 +425,17 @@ impl Bot for AgentV2Bot {
     fn decide(&mut self, view: &View, actions: &[Action]) -> Action {
         let obs = view.observe(actions, self.seq);
         self.agent.decide(&obs)
+    }
+}
+
+impl V2Config {
+    pub fn v3() -> Self {
+        Self { turn_planner: true, depth: 4, max_nodes: 60_000, ..Self::default() }
+    }
+}
+
+impl V2Config {
+    pub fn v4() -> Self {
+        Self { setup_search: true, strategic: true, ..Self::v3() }
     }
 }

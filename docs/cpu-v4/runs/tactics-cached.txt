@@ -1,0 +1,17 @@
+   Compiling catan-ai v0.1.0 (C:\catan_lab\crates\catan-ai)
+    Finished `bench-debug` profile [optimized + debuginfo] target(s) in 21.26s
+     Running tests\strategy_v4.rs (target\bench-debug\deps\strategy_v4-9928f5b7de90e96e.exe)
+
+running 10 tests
+test specific_port_exchanges_the_given_resource ... ok
+test one_surplus_pool_cannot_pay_two_deficits_twice ... ok
+test development_draws_use_remaining_counts_and_deplete_without_replacement ... ok
+test portfolio_values_matching_ports_and_number_coverage ... ok
+test blocking_the_only_settlement_site_removes_a_rivals_win ... ok
+test robber_blocks_the_resource_that_would_complete_a_winning_city ... ok
+test guaranteed_city_win_beats_a_speculative_development_draw ... ok
+test hazard_cache_preserves_exact_values_across_actions ... ok
+test setup_search_uses_all_candidates_without_reading_live_rng ... ok
+test complete_snake_setup_is_legal_for_three_and_four_players ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s

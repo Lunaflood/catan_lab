@@ -60,7 +60,7 @@ function readJson(ptr) {
 }
 
 async function loadWasm() {
-  const res = await fetch("catan_wasm.wasm");
+  const res = await fetch("catan_wasm.wasm", { cache: "no-store" });
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   wasm = wrapForJournal(instance.exports);
 }
@@ -1097,7 +1097,7 @@ function drawHints(gHints) {
       const [x, y] = tileXY(a.tile);
       // 点線の輪郭は地形の絵に紛れて見づらい。
       // **数字チップを光る輪で囲って**、そこを見れば分かるようにする
-      const g = el("g", { class: "tilehint" }, gHints);
+      const g = el("g", { class: "tilehint" + (robberTile === a.tile ? " chosen" : ""), "data-tile": a.tile }, gHints);
       el("polygon", { points: hexPoints(x, y, board.hexSize * 0.9), class: "spot-tile" }, g);
       // 下に暗い縁を敷いてから明るい輪を重ねる。
       // 1 本だけだと、明るいヘクスの上と暗いヘクスの上で見え方が変わって
@@ -3086,8 +3086,8 @@ function renderTradeComposer(box, mode) {
  */
 function renderVictimPick(box) {
   const t = board.tiles[robberTile];
-  const acts = state.actions.filter((a) => a.tile === robberTile);
-  const me = state.players.find((p) => p.human);
+  const acts = state.actions.filter((a) => a.kind === "MOVE_ROBBER" && a.tile === robberTile);
+  const me = state.players.find((p) => p.id === state.toAct);
 
   // そのヘクスに面している相手
   const near = new Set();
@@ -3101,9 +3101,9 @@ function renderVictimPick(box) {
   const others = state.players.filter((p) => !me || p.id !== me.id);
   const canAny = others.some((p) => acts.some((x) => x.victim === p.id));
 
-  box.innerHTML = `<div class="banner pick">${
+  box.innerHTML = `<div class="banner pick">移動先：${RES_JA[t.resource] || "砂漠"}${t.number ? `（${t.number}）` : ""}<br>${
     canAny
-      ? "<b>誰から奪うか</b>　持ち物を見て選んでください"
+      ? "<b>誰から奪うか</b>　資源カードを１枚奪う相手を選んでください"
       : "<b>ここに置きますか？</b>　この場所からは誰からも奪えません"
   }</div>`;
 
@@ -3111,10 +3111,12 @@ function renderVictimPick(box) {
   wrap.className = "victims";
   for (const p of others) {
     const a = acts.find((x) => x.victim === p.id);
-    const why = a ? "" : !near.has(p.id) ? "この場所に面していない" : "手札が無い";
+    const why = a ? "" : !near.has(p.id) ? "隣接する開拓地・都市がない" : "資源カードがない（発展カードは奪えません）";
     const b = document.createElement("button");
     b.className = "vcard" + (a ? "" : " off");
     b.disabled = !a;
+    b.dataset.victim = p.id;
+    b.setAttribute("aria-label", a ? `${nameOf(p.id)}から資源カードを1枚奪う` : `${nameOf(p.id)}：${why}`);
     b.style.setProperty("--c", PLAYER_COLORS[p.id]);
     b.innerHTML = `
       <div class="vhead"><span class="sw"></span>${escapeHtml(nameOf(p.id))}
@@ -3132,14 +3134,14 @@ function renderVictimPick(box) {
   box.appendChild(wrap);
 
   // 誰からも奪えないヘクスは、置くだけ
-  const none = acts.find((x) => x.victim === undefined);
+  const none = acts.find((x) => x.victim == null);
   if (none) {
     box.appendChild(
       tile({ cls: "big roll mid", name: "ここに置く", sub: "", onClick: () => play(none.i) })
     );
   }
-  // 「選び直す」ボタンは置かない。盤の光っている場所はそのまま押せるので、
-  // 別のヘクスをクリックすればそのまま選び直せる
+  // 拡大した盤面では選択パネルの後ろに別の候補が隠れることがある。
+  box.appendChild(tile({ cls: "wide", name: "場所を選び直す", onClick: () => { robberTile = null; render(); } }));
 }
 
 /** 銀行・港との交換の下書き（give はレートの倍数、take は枚数） */
@@ -3504,6 +3506,8 @@ function renderActions() {
   renderOffers();
   renderPanel(abx);
   abx.hidden = !abx.innerHTML;
+  // Text-only placement instructions must not intercept the board underneath.
+  abx.classList.toggle("board-instruction", !abx.querySelector("button, input, select"));
   // ★ 出す場所は用事で変える。
   //   ・**手札を選ぶ**もの（捨て札・交易）は**手札の真上**。
   //     視線と指が手札にあるので、反対側の端に出すと往復させることになる。
@@ -4758,7 +4762,11 @@ function renderPrompt() {
 // ---------------------------------------------------------------- 進行
 
 function isHumanTurn() { return wasm.is_human_turn() === 1; }
-function refreshState() { state = readJson(wasm.state_json()); }
+function refreshState() {
+  state = readJson(wasm.state_json());
+  if (state.prompt !== "MOVE_ROBBER" || !state.actions.some((a) => a.kind === "MOVE_ROBBER" && a.tile === robberTile)) robberTile = null;
+  if (devPick && (!isHumanTurn() || !state.actions.some((a) => a.kind === devPick.action))) devPick = null;
+}
 
 /**
  * 効果音の見張り。
@@ -4898,6 +4906,7 @@ function render() {
 }
 
 function play(i) {
+  devPick = null;
   // オンラインでは、自分の手もサーバを通してから盤に入れる。
   // 手元で先に進めると、他の人と手順が入れ替わってずれる
   if (net.on) {
@@ -4993,8 +5002,9 @@ async function api(path, body) {
 
 /** 手を送る。**自分の手も、サーバから返ってきてから盤に入れる**（順番を 1 つに保つため） */
 function netSend(payload) {
-  api("act", { room: net.room, token: net.token, ...payload }).catch((e) => {
+  api("act", { room: net.room, token: net.token, ...payload, fp: wasm.fingerprint() >>> 0 }).catch((e) => {
     net.err = e.message;
+    toast(e.message);
     renderPrompt();
     console.warn(e);
   });
@@ -5739,6 +5749,12 @@ function startFromHome() {
 }
 
 function newGame(newSeed, online) {
+  devPick = null;
+  pickKind = null;
+  pendingBuild = null;
+  openMenu = null;
+  answerMode = false;
+  localDeadline = null;
   clearTimeout(botTimer);
   clearTimeout(rollHide);
   clearInterval(rollTimer);
@@ -5955,6 +5971,27 @@ document.getElementById("disttoggle").addEventListener("click", (ev) => {
   });
 }
 
+/** 再現用の記録。部屋の鍵・通信トークン・チャットは含めない。 */
+function exportDebugRecord() {
+  if (!wasm || !state || !board) return;
+  const snapshot = readJson(wasm.state_json());
+  const record = {
+    schema: 1, build: BUILD, capturedAt: new Date().toISOString(),
+    fingerprint: wasm.fingerprint() >>> 0,
+    board, state: snapshot,
+    ui: { mySeat, robberTile, boardView: {...boardView},
+          width: innerWidth, height: innerHeight, zoom: getComputedStyle(document.getElementById("app")).zoom },
+    save: gameSetup ? {v: 1, setup: gameSetup, journal: journal.slice(), fp: wasm.fingerprint() >>> 0} : null,
+  };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(record, null, 2)], {type: "application/json"}));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `catan-debug-${Date.now()}.json`;
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast("不具合の記録を保存しました");
+}
+
 /* ---------------------------------------------------------------- 設定の引き出し
 
    左のレールの歯車から開く。対局中に要る「離れる・やり直す・音」を 1 か所に集める。
@@ -5994,6 +6031,7 @@ document.getElementById("disttoggle").addEventListener("click", (ev) => {
 
       <button class="sb-item" id="sb-new">この面子でもう一度</button>
       <button class="sb-item" id="sb-home">待機所に戻る</button>
+      <button class="sb-item" id="sb-debug">不具合の記録を保存</button>
       <div class="sb-note">戻ると、いまの対局は終わります</div>
 
       <div class="sb-sep"></div>
@@ -6029,6 +6067,7 @@ document.getElementById("disttoggle").addEventListener("click", (ev) => {
     // 離した時に一度だけ鳴らして、いまの大きさを耳で確かめられるようにする
     vol.addEventListener("change", () => sfx.play("click"));
 
+    box.querySelector("#sb-debug").addEventListener("click", exportDebugRecord);
     box.querySelector("#sb-fit").addEventListener("click", () => {
       resetBoardView();
       close();
@@ -6128,7 +6167,7 @@ for (const [k, id] of ["seed", "seed2", "seed3", "seed4"].entries()) {
   document.getElementById(id).value = randomSeed(k);
 }
 /** この版の目印。画面に出して、どの版が動いているかを一目で分かるようにする */
-const BUILD = "v12";
+const BUILD = "v13";
 
 /**
  * 起動。

@@ -1,0 +1,4 @@
+    Blocking waiting for file lock on build directory
+   Compiling catan-ai v0.1.0 (C:\catan_lab\crates\catan-ai)
+   Compiling catan-wasm v0.1.0 (C:\catan_lab\crates\catan-wasm)
+    Finished `release` profile [optimized] target(s) in 20.40s

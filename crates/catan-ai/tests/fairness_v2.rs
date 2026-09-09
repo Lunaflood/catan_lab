@@ -236,6 +236,20 @@ fn 秘密を差し替えても投影された出来事は一致する() {
 /// 本番 RNG を変えた双子で、続く手の偶然を固定して比較する。
 #[test]
 fn 秘密を差し替えても判断と説明は一致する() {
+    compare_decisions(V2Config::default());
+}
+
+#[test]
+fn v3も公開履歴が同じなら判断と説明は一致する() {
+    compare_decisions(V2Config::v3());
+}
+
+#[test]
+fn v4も公開履歴が同じなら判断と説明は一致する() {
+    compare_decisions(V2Config::v4());
+}
+
+fn compare_decisions(config: V2Config) {
     let mut compared = 0;
     for seed in 0..10u64 {
         let mut g = Game::with_config(4, seed, GameConfig::default());
@@ -246,7 +260,7 @@ fn 秘密を差し替えても判断と説明は一致する() {
             Box::new(WeightedRandomBot::new(seed + 3)),
         ];
         let viewer = (seed % 4) as u8;
-        let cfg = V2Config { belief: BeliefConfig { particles: 64, ..Default::default() }, ..V2Config::default() };
+        let cfg = V2Config { belief: BeliefConfig { particles: 64, ..Default::default() }, ..config };
         let mut agent_a = AgentV2::new(1234, cfg);
         let mut agent_b = AgentV2::new(1234, cfg);
         let mut buf = Vec::new();

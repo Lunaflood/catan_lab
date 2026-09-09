@@ -39,8 +39,10 @@ pub fn read_request(stream: &TcpStream) -> Option<Request> {
         if h.is_empty() {
             break;
         }
-        if let Some(v) = h.strip_prefix("Content-Length:") {
-            len = v.trim().parse().unwrap_or(0);
+        if let Some((name, value)) = h.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                len = value.trim().parse().ok()?;
+            }
         }
     }
 
@@ -254,6 +256,20 @@ pub fn mime_of(path: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn content_length_header_is_case_insensitive() {
+        use std::net::TcpListener;
+        for header in ["Content-Length", "content-length", "CONTENT-LENGTH"] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+            let body = r#"{"room":"ABCD","name":"player"}"#;
+            write!(client, "POST /api/join HTTP/1.1\r\n{header}: {}\r\n\r\n{body}", body.len()).unwrap();
+            let (server, _) = listener.accept().unwrap();
+            let request = read_request(&server).unwrap();
+            assert_eq!(request.body, body, "{header}");
+        }
+    }
 
     /// 🔴 ひとことは人が自由に打つ文字列。引用符も改行も普通に入る。
     /// 素朴に「次の " まで」で切っていた頃は、そこで**文が切れていた**

@@ -1,0 +1,27 @@
+   Compiling catan-ai v0.1.0 (C:\catan_lab\crates\catan-ai)
+   Compiling catan-cli v0.1.0 (C:\catan_lab\crates\catan-cli)
+   Compiling catan-server v0.1.0 (C:\catan_lab\crates\catan-server)
+warning: field `method` is never read
+  --> crates\catan-server\src\http.rs:15:9
+   |
+14 | pub struct Request {
+   |            ------- field in this struct
+15 |     pub method: String,
+   |         ^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `open_sse` is never used
+   --> crates\catan-server\src\http.rs:124:8
+    |
+124 | pub fn open_sse(stream: &mut TcpStream) -> bool {
+    |        ^^^^^^^^
+
+warning: function `push` is never used
+   --> crates\catan-server\src\http.rs:144:8
+    |
+144 | pub fn push(stream: &mut TcpStream, data: &str) -> bool {
+    |        ^^^^
+
+warning: `catan-server` (bin "catan-server") generated 3 warnings
+    Finished `release` profile [optimized] target(s) in 14.25s

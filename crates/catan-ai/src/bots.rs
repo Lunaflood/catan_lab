@@ -570,17 +570,17 @@ pub fn bot_for_level(level: u32, seed: u64) -> Box<dyn Bot> {
         // ここを「既定の重み + 2 手読み」にすると ふつう と近すぎた（16.7% 対 21.1%）。
         // 重みを良くして深さを 1 に留めた方が、段階の間隔がきれいに開く（実測 17.7% 対 31.1%）
         2 => Box::new(GreedyEvalBot::with_weights(seed, EvalWeights::tuned(), "つよい")),
-        // v2（観測だけを受け取る推定つきエージェント）。凍結した旧最高難易度 v2_control×3 に対し、
-        // 事前登録した最終テスト（未使用 seed）で 4 人 4,800 局・3 人 1,200 局とも区間が帰無仮説を上回った
-        // （docs/cpu-v2/README.md）。公開の出来事から相手の資源を数え上げ、発展カードの保持履歴から
-        // 隠れ勝利点と勝利ハザードを推定して交易・盗賊の判断に使う。
-        _ => Box::new(crate::agent_v2::AgentV2Bot::new(seed, crate::agent_v2::V2Config::default(), "さいきょう")),
+        // v4: 初期配置の相手応手予測、港と資源の建設速度、手番内4行動の
+        // 手順探索、相手の建設競争・騎士力・勝利ハザードを統合。
+        // 未使用乱数の対v2（4人480局/3人240局）と対v3（4人120局）で採用基準を通過。
+        // 詳細・限界・再現手順: docs/cpu-v4/README.md。
+        _ => Box::new(crate::agent_v2::AgentV2Bot::new(seed, crate::agent_v2::V2Config::v4(), "さいきょう")),
     }
 }
 
 /// v2 の対照として凍結した「設計書作成時の最高難易度」（2026-09-07）。
 ///
-/// `bot_for_level(3)` と同じ物。名前だけを変えてある。**途中で更新しない**
+/// 設計書作成時の `bot_for_level(3)` と同じ物。名前だけを変えてある。**途中で更新しない**
 /// （docs/cpu-v2/m0-baseline.md）。
 pub fn v2_control(seed: u64) -> SearchBot {
     let mut b = SearchBot::tuned_worlds(seed, 3, EvalWeights::tuned(), PlacementWeights::tuned());

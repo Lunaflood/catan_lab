@@ -565,6 +565,10 @@ pub fn fit(args: &[String], make_bot: &dyn Fn(&str, u64) -> Option<Box<dyn Bot>>
 
 /// 1 局を v2 で指させ、判断の説明を数か所出す（説明出力の確認用）
 pub fn explain(args: &[String]) {
+    explain_with_config(args, V2Config::default(), "v2");
+}
+
+pub fn explain_with_config(args: &[String], config: V2Config, label: &str) {
     let mut seed = 7_000_000u64;
     let mut every = 40usize;
     let mut i = 0;
@@ -582,7 +586,7 @@ pub fn explain(args: &[String]) {
         }
         i += 1;
     }
-    let mut v2 = AgentV2Bot::new(seed, V2Config::default(), "v2");
+    let mut v2 = AgentV2Bot::new(seed, config, label);
     let mut others: Vec<Box<dyn Bot>> = (1..4).map(|k| catan_ai::bots::bot_for_level(3, seed + k) as Box<dyn Bot>).collect();
     let cfg_game = GameConfig { turn_time_limit_ms: None, ..GameConfig::default() };
     let mut g = Game::with_config(4, seed, cfg_game);
@@ -595,7 +599,7 @@ pub fn explain(args: &[String]) {
         let a = if seat == 0 {
             let a = v2.decide(&View::new(&g, 0), &buf);
             k += 1;
-            if k % every == 0 && !g.is_setup() {
+            if k % every.max(1) == 0 || g.is_setup() {
                 println!("--- 手番 {} P0 の判断（公開点 {:?}）", g.turn, (0..4).map(|q| g.public_vp(q)).collect::<Vec<_>>());
                 println!("{}", v2.explain());
             }
@@ -608,6 +612,10 @@ pub fn explain(args: &[String]) {
         seq += 1;
         let ev = project_event(&before, &g, &rec, 0, LEGACY_APP, seq);
         v2.observe(&ev);
+        for q in 1..4 {
+            let ev = project_event(&before, &g, &rec, q as u8, LEGACY_APP, seq);
+            others[q - 1].observe(&ev);
+        }
     }
     println!("終局: 勝者 {:?} / 手番 {} / 実際の勝利点 {:?}", g.winner, g.turn, (0..4).map(|q| g.actual_vp(q)).collect::<Vec<_>>());
 }

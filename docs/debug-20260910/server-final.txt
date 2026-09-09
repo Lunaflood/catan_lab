@@ -1,0 +1,14 @@
+
+running 10 tests
+test http::tests::閉じていない値は撥ねる ... ok
+test http::tests::逃がした文字を含む値を最後まで取れる ... ok
+test http::tests::逃がした値を書き出して読み直すと元に戻る ... ok
+test rooms::tests::端末での照合用に対局を書き出す ... ok
+test rooms::tests::stale_or_duplicate_input_is_rejected_before_reinterpreting_its_index ... ok
+test http::tests::content_length_header_is_case_insensitive ... ok
+test rooms::tests::配る手には必ず指紋が付く ... ok
+test rooms::tests::誰も指さなくても対局は最後まで進む ... ok
+test rooms::tests::サーバと端末の合法手は並びも個数も一致する ... ok
+test rooms::tests::繋ぎ直した端末はサーバと同じ盤になる ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.71s
