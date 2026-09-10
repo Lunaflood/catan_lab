@@ -1,0 +1,21 @@
+
+running 12 tests
+test json::tests::入れ子と区切りが正しい ... ok
+test geometry::tests::頂点はヘクス中心から一定距離 ... ok
+test geometry::tests::隣り合うヘクスの中心は等距離 ... ok
+test geometry::tests::港の船は陸のヘクスに被らない ... ok
+test geometry::tests::辺の長さは全部同じ ... ok
+test geometry::tests::頂点は重ならない ... ok
+test geometry::tests::描画範囲に陸と港が全部入る ... ok
+test json::tests::日本語と記号を壊さない ... ok
+test input_regression_tests::oversized_card_counts_do_not_wrap_or_mutate_the_game ... ok
+test json::tests::配列の中のオブジェクトが並ぶ ... ok
+test results::tests::history_is_private_until_end_and_tracks_gains_losses_and_new_games ... ok
+test assist::tests::advice_is_legal_and_does_not_play_or_reveal_hidden_state ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

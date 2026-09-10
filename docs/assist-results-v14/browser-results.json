@@ -1,0 +1,101 @@
+{
+  "errors": [],
+  "results": [
+    {
+      "test": "advice",
+      "n": 3,
+      "seat": 0,
+      "passed": true
+    },
+    {
+      "test": "advice",
+      "n": 3,
+      "seat": 2,
+      "passed": true
+    },
+    {
+      "test": "advice",
+      "n": 4,
+      "seat": 1,
+      "passed": true
+    },
+    {
+      "test": "advice",
+      "n": 4,
+      "seat": 3,
+      "passed": true
+    },
+    {
+      "test": "phase-advice",
+      "phase": "PLAY_TURN",
+      "online": false,
+      "passed": true
+    },
+    {
+      "test": "phase-advice",
+      "phase": "DECIDE_TRADE",
+      "online": true,
+      "passed": true
+    },
+    {
+      "test": "phase-advice",
+      "phase": "DECIDE_ACCEPTEES",
+      "online": false,
+      "passed": true
+    },
+    {
+      "test": "phase-advice",
+      "phase": "MOVE_ROBBER",
+      "online": false,
+      "passed": true
+    },
+    {
+      "test": "phase-advice",
+      "phase": "DISCARD",
+      "online": false,
+      "passed": true
+    },
+    {
+      "test": "result",
+      "n": 3,
+      "width": 1280,
+      "height": 720,
+      "passed": true
+    },
+    {
+      "test": "result",
+      "n": 3,
+      "width": 800,
+      "height": 600,
+      "passed": true
+    },
+    {
+      "test": "result",
+      "n": 3,
+      "width": 1920,
+      "height": 1080,
+      "passed": true
+    },
+    {
+      "test": "result",
+      "n": 4,
+      "width": 1280,
+      "height": 720,
+      "passed": true
+    },
+    {
+      "test": "result",
+      "n": 4,
+      "width": 800,
+      "height": 600,
+      "passed": true
+    },
+    {
+      "test": "result",
+      "n": 4,
+      "width": 1920,
+      "height": 1080,
+      "passed": true
+    }
+  ]
+}

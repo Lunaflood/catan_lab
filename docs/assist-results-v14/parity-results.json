@@ -1,0 +1,14 @@
+[
+  {
+    "players": 3,
+    "steps": 574,
+    "identicalCpuActions": true,
+    "replayHistoryMatches": true
+  },
+  {
+    "players": 4,
+    "steps": 574,
+    "identicalCpuActions": true,
+    "replayHistoryMatches": true
+  }
+]

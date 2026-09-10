@@ -1,0 +1,311 @@
+
+running 3 tests
+test strategy::road_blocking_tests::route_estimates_stop_at_opponents_but_keep_existing_isolated_roads ... ok
+test prune::tests::自分のヘクスには盗賊を置かない ... ok
+test prune::tests::枝刈りしても手は必ず残る ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 9 tests
+test 勝利判定の証拠は正しいタイミングだけ ... ok
+test 当事者と第三者で盗みの扱いが違う ... ok
+test 複数購入後の使用で世代を決め打ちしない ... ok
+test 別カードを使った手番の不使用は証拠にならない ... ok
+test 有効な機会の不使用でだけvp確率が上がる ... ok
+test 置ける道がない時の街道建設の不使用は証拠にならない ... ok
+test 追加情報がなければ超幾何分布と一致する ... ok
+test 傾向の混合は過信を抑える ... ok
+test 保存則と観測整合を全粒子が満たす ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+
+running 1 test
+test 一局の中身を数える ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+
+running 2 tests
+test every_alternative_and_acceptance_is_payable_in_every_sample ... ok
+test hidden_resources_development_and_future_do_not_change_decision ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.26s
+
+
+running 6 tests
+test 相手の伏せた勝利点はv2の判断を変えない ... ok
+test 秘密を差し替えても投影された出来事は一致する ... ok
+test 秘密を差し替えても観測は一致する ... ok
+test 秘密を差し替えても判断と説明は一致する ... ok
+test v3も公開履歴が同じなら判断と説明は一致する ... ok
+test v4も公開履歴が同じなら判断と説明は一致する ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.03s
+
+
+running 4 tests
+test 伏せた勝利点は手番の外では勝ちにならない ... ok
+test 勝利判定は伏せた点も数える ... ok
+test 公開勝利点には勝利点カードが入らない ... ok
+test 相手の伏せた勝利点はcpuの判断を変えない ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test 評価は決定的 ... ok
+test 道は空いている方角へ伸びる ... ok
+test 海に面した1ヘクスだけの頂点は掴まない ... ok
+test 砂漠だけの死に頂点を選ばない ... ok
+test 二軒目は一軒目と資源が被りにくい ... ok
+test 配置ボットはランダムより産出も種類も明確に上 ... ok
+test 手で決めた重みより実測で残した重みの方が産出が高い ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+
+running 1 test
+test 実戦の進行でも産出は規則どおり ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 57.08s
+
+
+running 5 tests
+test 公開8点で都市が建つ手札は次の手番に確実に勝つわけではないが今なら勝つ ... ok
+test 発展カードの購入は山の内訳で確率になる ... ok
+test 騎士で最大騎士力を取れば2点 ... ok
+test 一見損な銀行交換を挟むと届く ... ok
+test 産出は出目で周辺化される ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test a_strategy_fusionを検出する ... ok
+test b_相手の全知化を検出する ... ok
+test d_単一の敵と見なす評価との差 ... ok
+test 本番のロールアウト相手方策は根の秘密を読まない ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 10 tests
+test one_surplus_pool_cannot_pay_two_deficits_twice ... ok
+test portfolio_values_matching_ports_and_number_coverage ... ok
+test development_draws_use_remaining_counts_and_deplete_without_replacement ... ok
+test robber_blocks_the_resource_that_would_complete_a_winning_city ... ok
+test blocking_the_only_settlement_site_removes_a_rivals_win ... ok
+test specific_port_exchanges_the_given_resource ... ok
+test guaranteed_city_win_beats_a_speculative_development_draw ... ok
+test hazard_cache_preserves_exact_values_across_actions ... ok
+test setup_search_uses_all_candidates_without_reading_live_rng ... ok
+test complete_snake_setup_is_legal_for_three_and_four_players ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+
+running 3 tests
+test 一見損な銀行交換を挟むと即勝利 ... ok
+test 公開8点と隠れvpの分布が同じ交換の危険度を変える ... ok
+test 盗賊は勝ちそうな相手を止める ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test 相手が損する交換は成立しないと判定される ... ok
+test 建設が成立する交換は微差の交換より桁違いに高く出る ... ok
+test 対案は提案者が払えなければ出さない ... ok
+test 交易は資源の総数を変えない ... ok
+test 建設を成立させる交換は正の評価になる ... ok
+test リーダーを利する交換は避けられる ... ok
+test 交易の差分評価は局面を作り直した結果と一致する ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test all_robber_choices_are_evaluated_and_input_is_unchanged ... ok
+test root_reordering_does_not_change_unique_winning_trade ... ok
+test two_bank_trades_then_city_is_seen_as_a_win ... ok
+test domestic_trade_is_evaluated_through_the_resulting_build ... ok
+test strategic_evaluation_preserves_multi_action_winning_sequences ... ok
+test live_hidden_cards_and_rng_do_not_change_v3_decision ... ok
+test road_building_card_then_two_roads_then_settlement ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 36 tests
+test board::tests::特化港は他資源を優遇しない ... ok
+test coord::tests::頂点と辺の数え上げ ... ok
+test board::tests::頂点のpipsは隣接ヘクスの合計 ... ok
+test board::tests::渦巻き順は19枚を1回ずつ通る ... ok
+test coord::tests::立方体座標の不変条件 ... ok
+test board::tests::港は9本の相異なる辺に乗り18頂点を覆う ... ok
+test longest_road::tests::六角形の輪は6 ... ok
+test coord::tests::辺の端点は隣接する2頂点 ... ok
+test board::tests::港の辺はすべて海岸線 ... ok
+test longest_road::tests::一本道はその本数 ... ok
+test longest_road::tests::他人の道は数えない ... ok
+test board::tests::生成した盤の内訳が公式どおり ... ok
+test coord::tests::方向は巡回順に並んでいる ... ok
+test board::tests::ランダム配置では赤数字が隣接しない ... ok
+test longest_road::tests::最長路カードの帰属 ... ok
+test longest_road::tests::相手の建物で終わる道はその辺まで数える ... ok
+test longest_road::tests::自分の建物は分断しない ... ok
+test longest_road::tests::相手の建物は道を分断する ... ok
+test longest_road::tests::分岐は最長の枝だけ数える ... ok
+test longest_road::tests::道が無ければ0 ... ok
+test rng::tests::シャッフルは要素を保存する ... ok
+test rng::tests::同じseedなら同じ列 ... ok
+test rng::tests::belowは範囲内 ... ok
+test topology::tests::ヘクスの6頂点6辺は相異なり整合する ... ok
+test topology::tests::辺の隣接数は2から4 ... ok
+test topology::tests::盤は連結 ... ok
+test topology::tests::基本の数え上げ ... ok
+test topology::tests::隣接関係は対称 ... ok
+test topology::tests::頂点に接する陸ヘクスは1から3枚で総和は114 ... ok
+test topology::tests::頂点の次数は2か3で総和は辺数の2倍 ... ok
+test rng::tests::ダイスの分布が理論値に近い ... ok
+test view::tests::determinizeした局面はそのまま指せる ... ok
+test view::tests::相手の伏せた勝利点は見えない ... ok
+test view::tests::determinizeは枚数を保ったまま種類だけ入れ替える ... ok
+test longest_road::tests::道15本でも十分速い ... ok
+test view::tests::未知の発展カードは常に整合する ... ok
+
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+
+running 2 tests
+test 端末の設定では交渉の門が時間で閉じない ... ok
+test 時計を進めても合法手も指紋も変わらない ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 3 tests
+test 頂点とヘクスの対応は双方向で一致する ... ok
+test ヘクスの六頂点は重複しない ... ok
+test 産出は規則どおりで銀行の勘定も合う ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+
+
+running 2 tests
+test opponent_buildings_block_new_roads_in_paid_and_free_road_phases ... ok
+test preexisting_roads_beyond_a_break_allow_extension_and_settlement ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test knight_before_roll_and_seven_after_roll_resume_the_right_phase ... ok
+test robber_targets_and_transfers_match_adjacent_buildings_for_every_seat_and_tile ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test 初期配置の直後の状態が公式どおり ... ok
+test 同じseedなら同じ試合になる ... ok
+test 交易を切っても回る ... ok
+test ランダム盤でも回る ... ok
+test 勝者は10点以上で他は10点未満 ... ok
+test ランダム自己対戦で不変条件が壊れない ... ok
+test 統計を出す ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.60s
+
+
+running 34 tests
+test oversized_trade_bundles_are_rejected_without_overflow ... ok
+test 全員が単に拒否したら提案は流れる ... ok
+test 一度断られた条件は同じ手番で出し直せない ... ok
+test open_counter_must_not_be_accepted_as_a_free_gift ... ok
+test 取り下げた条件も出し直せない ... ok
+test 実時間モードではtickで進む ... ok
+test 同種を含む交換は生成されない ... ok
+test 出来事ごとの流れは互いに影響しない ... ok
+test 対案が成立し資源が正しい向きに動く ... ok
+test 対案は候補を並べて提案者に選ばせられる ... ok
+test 対案も持っていない資源では出せない ... ok
+test 手番が変わると持ち時間はリセットされる ... ok
+test many_custom_proposals_do_not_overflow_the_cpu_offer_counter ... ok
+test 対案の候補は同じ条件を重ねない ... ok
+test 広い生成では複数種類の束が出る ... ok
+test seedごとに最初の出目は変わる ... ok
+test 手番が変われば同じ条件をまた出せる ... ok
+test 払えない対案は受けられない ... ok
+test 提案の生成は絞られていない ... ok
+test 提案の番号づけは120通りが全部別々になる ... ok
+test 提案の番号づけは生成する形を全部拾う ... ok
+test 提案は一手番の回数で打ち切られる ... ok
+test 既定の持ち時間は2分 ... ok
+test 時計が切れたら提案は一覧から消える ... ok
+test 時間切れで交渉だけが止まり建設と手番終了は残る ... ok
+test 欲しい物だけの相談も出せる ... ok
+test 無制限にもできる ... ok
+test 片側が空の相談は対案でしか答えられない ... ok
+test 狭い生成では単一資源だけになる ... ok
+test 時計が切れた後に古い提案を指すと弾かれる - should panic ... ok
+test 生成される対案は提案者の欲しい資源を必ず含む ... ok
+test 盤面の種と出目の種は独立している ... ok
+test 積んだ候補だけで返答を確定できる ... ok
+test 積んだ対案の候補は取り消せる ... ok
+
+test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 10 tests
+test http::tests::逃がした値を書き出して読み直すと元に戻る ... ok
+test http::tests::閉じていない値は撥ねる ... ok
+test rooms::tests::端末での照合用に対局を書き出す ... ok
+test http::tests::逃がした文字を含む値を最後まで取れる ... ok
+test rooms::tests::stale_or_duplicate_input_is_rejected_before_reinterpreting_its_index ... ok
+test http::tests::content_length_header_is_case_insensitive ... ok
+test rooms::tests::配る手には必ず指紋が付く ... ok
+test rooms::tests::誰も指さなくても対局は最後まで進む ... ok
+test rooms::tests::サーバと端末の合法手は並びも個数も一致する ... ok
+test rooms::tests::繋ぎ直した端末はサーバと同じ盤になる ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
+
+
+running 12 tests
+test json::tests::入れ子と区切りが正しい ... ok
+test geometry::tests::港の船は陸のヘクスに被らない ... ok
+test geometry::tests::描画範囲に陸と港が全部入る ... ok
+test geometry::tests::隣り合うヘクスの中心は等距離 ... ok
+test results::tests::history_is_private_until_end_and_tracks_gains_losses_and_new_games ... ok
+test json::tests::配列の中のオブジェクトが並ぶ ... ok
+test geometry::tests::頂点はヘクス中心から一定距離 ... ok
+test input_regression_tests::oversized_card_counts_do_not_wrap_or_mutate_the_game ... ok
+test geometry::tests::頂点は重ならない ... ok
+test json::tests::日本語と記号を壊さない ... ok
+test geometry::tests::辺の長さは全部同じ ... ok
+test assist::tests::advice_is_legal_and_does_not_play_or_reveal_hidden_state ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

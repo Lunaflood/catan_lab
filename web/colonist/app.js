@@ -6,6 +6,7 @@
 // 見た目は「木の盤の再現」を狙っていない。海は端まで続き、枠は無い。
 
 import * as sfx from "./sfx.js";
+import {resultCharts, bindResultCharts} from "./insights.js?v=94";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const RES = ["WOOD", "BRICK", "SHEEP", "WHEAT", "ORE"];
@@ -48,6 +49,9 @@ let lastDiceKey = "";
 let lastSeq = 0;
 /** 盗賊が一度でも動かされたか。最初の砂漠に居るうちは動きを付けない */
 let robberEverMoved = false;
+let assistSetup = null;
+let assistWorker = null, assistTimer = null, assistRequest = 0, assistKey = null, assistAdvice = null;
+let resultKey = null;
 let mySeat = 0;   // 人間の席（seed から決まる）
 
 // ---------------------------------------------------------------- wasm 橋渡し
@@ -93,6 +97,99 @@ function wrapForJournal(w) {
   }
   return out;
 }
+
+// ---------------------------------------------------------------- おすすめの一手
+function assistFingerprint() { return `${wasm.fingerprint() >>> 0}:${journal.length}`; }
+function stopAssistWorker() {
+  clearTimeout(assistTimer); assistTimer = null;
+  assistWorker?.terminate(); assistWorker = null;
+}
+function closeAssist(redraw = true) {
+  stopAssistWorker(); assistRequest++; assistKey = null; assistAdvice = null;
+  document.getElementById("assist-panel").hidden = true;
+  document.getElementById("r-assist").setAttribute("aria-expanded", "false");
+  if (redraw && board && state) drawState();
+}
+function invalidateAssist() {
+  if (!assistKey || assistKey === assistFingerprint()) return;
+  stopAssistWorker(); assistRequest++; assistKey = null; assistAdvice = null;
+  if (!document.getElementById("assist-panel").hidden) {
+    document.getElementById("assist-body").innerHTML = '<p>局面が変わりました。</p><button id="assist-refresh">今の一手を考える</button>';
+    document.getElementById("assist-refresh").onclick = requestAssist;
+  }
+}
+function assistLabel(a) {
+  if (a.kind === "MOVE_ROBBER") {
+    const t = board.tiles[a.tile];
+    return `${RES_JA[t.resource] || "砂漠"}${t.number ? "（"+t.number+"）" : ""}へ盗賊を移動` + (a.victim != null ? `・${nameOf(a.victim)}から奪う` : "");
+  }
+  return a.label.replace(/P([0-3])/g, (_,p) => nameOf(Number(p)));
+}
+function assistPlace(a) {
+  let tiles = [];
+  if (a.node != null) tiles = board.tiles.filter(t => t.nodes.includes(a.node));
+  if (a.edge != null) {
+    const e = board.edges[a.edge];
+    const ns = board.nodes.filter(n => (Math.abs(n.x-e.x1)<0.02 && Math.abs(n.y-e.y1)<0.02) || (Math.abs(n.x-e.x2)<0.02 && Math.abs(n.y-e.y2)<0.02));
+    tiles = board.tiles.filter(t => ns.some(n => t.nodes.includes(n.id)));
+  }
+  return tiles.map(t => `${t.number || ""}${RES_JA[t.resource] || "砂漠"}`).join("・");
+}
+function showAssistAdvice(data) {
+  const a = state.actions.find(a => a.i === data.index);
+  if (!a) return;
+  assistAdvice = a;
+  const spatial = a.node != null || a.edge != null || a.tile != null;
+  const place = assistPlace(a);
+  document.getElementById("assist-body").innerHTML = `<h3>${escapeHtml(assistLabel(a))}</h3>
+    ${spatial ? `<div class="assist-place">盤面の黄色い印がおすすめの場所です。${place ? `<br>${escapeHtml(place)}の付近` : ""}</div>` : ""}
+    <ul>${data.reasons.map(r => `<li>${escapeHtml(r)}</li>`).join("")}</ul>
+    ${spatial ? '<button id="assist-focus">盤面で場所を確認</button>' : ""}
+    ${data.alternatives.length ? `<details><summary>ほかに比較した候補</summary><ul>${data.alternatives.map(i => state.actions.find(a => a.i === i)).filter(Boolean).map(a => `<li>${escapeHtml(assistLabel(a))}${assistPlace(a) ? `（${escapeHtml(assistPlace(a))}付近）` : ""}</li>`).join("")}</ul></details>` : ""}
+    <p class="assist-note">「さいきょう」CPUによるおすすめです。自分の手札と公開情報から考えます。未知のカードや出目を含むため、勝利を保証するものではありません。</p>`;
+  document.getElementById("assist-focus")?.addEventListener("click", () => {
+    resetBoardView(); drawState();
+    document.getElementById("assist-panel").hidden = true;
+    document.getElementById("r-assist").setAttribute("aria-expanded", "false");
+  });
+  drawState();
+}
+function requestAssist() {
+  const panel = document.getElementById("assist-panel"), body = document.getElementById("assist-body");
+  panel.hidden = false; document.getElementById("r-assist").setAttribute("aria-expanded", "true");
+  if (!state || state.winner !== null || !isHumanTurn() || state.toAct !== mySeat || !assistSetup || watching) {
+    body.innerHTML = '<p>自分が配置・建設・交易への返答などを操作できるときに、おすすめを確認できます。</p>'; return;
+  }
+  stopAssistWorker(); assistAdvice = null; assistKey = assistFingerprint();
+  const id = ++assistRequest, fp = wasm.fingerprint() >>> 0;
+  body.innerHTML = '<p>おすすめの一手を考えています…</p><p class="assist-note">盤面と手札をもとに、建設・交換・相手への影響を比較しています。</p>';
+  drawState();
+  const fail = message => { if (id !== assistRequest) return; stopAssistWorker(); body.innerHTML = `<p>${escapeHtml(message)}</p><button id="assist-refresh">もう一度考える</button>`; document.getElementById("assist-refresh").onclick = requestAssist; };
+  try {
+    assistWorker = new Worker(new URL("./assist-worker.js?v=94", import.meta.url));
+    assistWorker.onmessage = ({data}) => {
+      if (data.requestId !== assistRequest || assistKey !== assistFingerprint()) return;
+      stopAssistWorker();
+      if (data.error) { fail(data.error); return; }
+      showAssistAdvice(data.advice);
+    };
+    assistWorker.onerror = () => fail("アシストを読み込めませんでした。再読み込みしてお試しください。");
+    assistTimer = setTimeout(() => fail("思考に時間がかかっています。もう一度お試しください。"), 30000);
+    assistWorker.postMessage({requestId:id,setup:assistSetup,journal,fingerprint:fp});
+  } catch { fail("このブラウザではアシストを開始できませんでした。"); }
+}
+function drawAssistMark(parent) {
+  if (!assistAdvice || assistKey !== assistFingerprint()) return;
+  const a = assistAdvice;
+  if (a.node != null) { const [cx,cy]=nodeXY(a.node); el("circle",{cx,cy,r:17,class:"assist-mark"},parent); }
+  else if (a.edge != null) { const e=board.edges[a.edge]; el("line",{x1:e.x1,y1:e.y1,x2:e.x2,y2:e.y2,class:"assist-mark","stroke-linecap":"round"},parent); }
+  else if (a.tile != null) { const [x,y]=tileXY(a.tile); el("polygon",{points:hexPoints(x,y,board.hexSize*0.9),class:"assist-mark"},parent); }
+}
+document.getElementById("r-assist").addEventListener("click", () => {
+  if (!document.getElementById("assist-panel").hidden) closeAssist(); else requestAssist();
+});
+document.getElementById("assist-close").addEventListener("click", () => closeAssist());
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeAssist(); });
 
 // ---------------------------------------------------------------- SVG の小道具
 
@@ -1016,6 +1113,7 @@ function drawState() {
 
   lastPieces = nowPieces;
   if (isHumanTurn()) { drawHints(gHints); drawBuildAsk(gHints); }
+  drawAssistMark(gHints);
 }
 
 /**
@@ -2014,7 +2112,11 @@ function renderRollDist() {
  */
 function renderResult() {
   const box = document.getElementById("result");
-  if (state.winner === null) { box.hidden = true; box.innerHTML = ""; return; }
+  if (state.winner === null) { resultKey = null; box.hidden = true; box.innerHTML = ""; return; }
+  const key = `${wasm.fingerprint()}:${seatNames.join("|")}`;
+  if (resultKey === key) { renderAgainNote(); return; }
+  resultKey = key;
+  const stats = wasm.result_json ? readJson(wasm.result_json()) : {rollCounts: state.rollCounts};
   box.hidden = false;
 
   const rows = state.players
@@ -2045,7 +2147,8 @@ function renderResult() {
         <b>${escapeHtml(nameOf(state.winner))} の勝ち</b>
         <span class="rturn">${state.turn} 手番</span>
       </div>
-      <table class="rtable">
+      <nav class="result-jumps" aria-label="結果の表示位置"><button data-result-jump=".rtable">順位</button><button data-result-jump=".vp-chart">勝利点の推移</button><button data-result-jump=".dice-chart">出目分布</button></nav>
+      <div class="result-table-wrap"><table class="rtable">
         <thead><tr>
           <th></th><th></th>
           <th title="開拓地 1 点ずつ">開拓地</th>
@@ -2056,7 +2159,8 @@ function renderResult() {
           <th>合計</th>
         </tr></thead>
         <tbody>${body}</tbody>
-      </table>
+      </table></div>
+      ${resultCharts(stats, state.players, nameOf)}
       <div class="rbtns">
         <button id="resultagain" class="ragain">もう一度遊ぶ</button>
         <button id="resulthome" class="rhome">ホームに戻る</button>
@@ -2065,6 +2169,11 @@ function renderResult() {
     </div>`;
   document.getElementById("resultagain").addEventListener("click", againVote);
   document.getElementById("resulthome").addEventListener("click", goHome);
+  bindResultCharts(box, stats, state.players, nameOf);
+  box.querySelectorAll("[data-result-jump]").forEach(button => button.addEventListener("click", () => {
+    const target = box.querySelector(button.dataset.resultJump);
+    (target?.closest(".result-section") || target)?.scrollIntoView({block:"start",behavior:"smooth"});
+  }));
   renderAgainNote();
 }
 
@@ -4764,6 +4873,7 @@ function renderPrompt() {
 function isHumanTurn() { return wasm.is_human_turn() === 1; }
 function refreshState() {
   state = readJson(wasm.state_json());
+  invalidateAssist();
   if (state.prompt !== "MOVE_ROBBER" || !state.actions.some((a) => a.kind === "MOVE_ROBBER" && a.tile === robberTile)) robberTile = null;
   if (devPick && (!isHumanTurn() || !state.actions.some((a) => a.kind === devPick.action))) devPick = null;
 }
@@ -5027,7 +5137,7 @@ function netApply(m) {
     case "altRemove": ok = wasm.counter_alt_remove(m.n | 0); break;
     case "discard": ok = wasm.discard_custom(...g); break;
     case "maritime": ok = wasm.maritime_bulk(...g, ...w); break;
-    default: ok = wasm.apply_index(m.i | 0); break;
+    default: ok = wasm.apply_index(m.i | 0); if (ok) noteMove({i: m.i | 0}); break;
   }
   if (!ok) {
     // ここがずれると以降が全部おかしくなる。黙って進めない
@@ -5396,6 +5506,7 @@ function restoreGame() {
     dropSave();
     return false;
   }
+  assistSetup = su;
   gameSetup = su;
   journal = save.journal;
   refreshState();
@@ -5713,6 +5824,7 @@ function renderOnlineBox() {
 }
 
 function showHome() {
+  closeAssist(false);
   clearTimeout(botTimer);
   watching = false;
   // 待機所に戻る＝この対局は畳む。控えも捨てる。
@@ -5749,6 +5861,8 @@ function startFromHome() {
 }
 
 function newGame(newSeed, online) {
+  closeAssist(false);
+  resultKey = null;
   devPick = null;
   pickKind = null;
   pendingBuild = null;
@@ -5831,6 +5945,7 @@ function newGame(newSeed, online) {
   );
   // 「続きから」のための控え。盤面ではなく**作り方**だけを持つ
   journal = [];
+  assistSetup = { boardSeed, diceSeed, devSeed, stealSeed, players, mySeat, askLast };
   gameSetup = online || watching ? null : {
     boardSeed, diceSeed, devSeed, stealSeed, players,
     mySeat, humansMask, levelBits: levels, askLast,
@@ -6167,7 +6282,7 @@ for (const [k, id] of ["seed", "seed2", "seed3", "seed4"].entries()) {
   document.getElementById(id).value = randomSeed(k);
 }
 /** この版の目印。画面に出して、どの版が動いているかを一目で分かるようにする */
-const BUILD = "v13";
+const BUILD = "v14";
 
 /**
  * 起動。

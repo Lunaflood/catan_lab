@@ -171,3 +171,33 @@ impl BoardHazards {
             .map(|p| self.hazard(&sim, p) - self.hazard(g, p)).sum()
     }
 }
+#[cfg(test)]
+mod road_blocking_tests {
+    use super::*;
+    use catan_core::board::Building;
+    use catan_core::game::GameConfig;
+
+    #[test]
+    fn route_estimates_stop_at_opponents_but_keep_existing_isolated_roads() {
+        let topo = Topology::get();
+        let junction = (0..NUM_NODES).find(|&n| topo.node_edges[n].as_slice().len() == 3).unwrap();
+        let edges = topo.node_edges[junction].as_slice();
+        let beyond = topo.edge_nodes[edges[1] as usize].into_iter().find(|&n| n as usize != junction).unwrap();
+        for me in 0..4 { for kind in [BuildingKind::Settlement, BuildingKind::City] {
+            let mut g = Game::with_config(4, 42, GameConfig::default());
+            g.board.road[edges[0] as usize] = Some(me);
+            assert_eq!(distances(&g, me)[beyond as usize], 1);
+            g.board.building[junction] = Some(Building { owner: (me+1)%4, kind });
+            assert!(distances(&g, me)[beyond as usize] > 1);
+            // This road was built before the opponent occupied the junction.
+            g.board.road[edges[1] as usize] = Some(me);
+            assert_eq!(distances(&g, me)[beyond as usize], 0);
+            for e in &topo.node_edges[beyond as usize] {
+                if e == edges[1] { continue; }
+                assert!(g.can_build_road(e, me));
+                let next = topo.edge_nodes[e as usize].into_iter().find(|&n| n != beyond).unwrap();
+                assert!(distances(&g, me)[next as usize] <= 1);
+            }
+        }}
+    }
+}

@@ -9,6 +9,8 @@
 
 pub mod geometry;
 mod json;
+mod assist;
+mod results;
 
 use catan_ai::bots::{bot_for_level, Bot};
 use catan_core::action::{Action, Bundle, DevCard, Outcome, Prompt, EMPTY};
@@ -69,6 +71,8 @@ struct Session {
     /// **対局の再現**に使う ── CPU の手も番号で控えておけば、
     /// ボットの中身がどうであれ同じ試合をなぞり直せる
     last_index: i32,
+    advisor: Option<(PlayerId, catan_ai::agent_v2::AgentV2)>,
+    scores: Vec<results::ScoreFrame>,
 }
 
 thread_local! {
@@ -107,6 +111,11 @@ fn apply_notify(sess: &mut Session, a: Action) -> catan_core::action::ActionReco
             sess.bots[seat].observe(&ev);
         }
     }
+    if let Some((seat, advisor)) = &mut sess.advisor {
+        let ev = catan_core::observer::project_event(&before, &sess.game, &rec, *seat, catan_core::observation::LEGACY_APP, seq);
+        advisor.observe(&ev);
+    }
+    results::record(sess);
     rec
 }
 
@@ -184,6 +193,8 @@ pub extern "C" fn game_new(
             seq: 0,
             evseq: 0,
             last_index: -1,
+            advisor: None,
+            scores: vec![results::ScoreFrame { turn: 0, points: [0; MAX_PLAYERS] }],
         })
     });
     refresh();
